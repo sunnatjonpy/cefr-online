@@ -1,0 +1,146 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CEFR Mock Taker | Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/styles.css" />
+</head>
+<body data-page="admin">
+  <div class="page">
+    <div id="site-header"></div>
+    <section class="hero">
+      <h1>Admin Panel</h1>
+      <p>Manage users, mock tests, vocabulary sets, and grammar lessons.</p>
+    </section>
+
+    <section class="section">
+      <h2>Users</h2>
+      <div class="form">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+            </tr>
+          </thead>
+          <tbody id="users-table"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Mock Tests</h2>
+      <form class="form" id="test-form">
+        <div class="row">
+          <div>
+            <label for="test-id">Test ID (leave blank for new)</label>
+            <input id="test-id" type="text" placeholder="auto" />
+          </div>
+          <div>
+            <label for="test-title">Title</label>
+            <input id="test-title" type="text" required />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="test-section">Section</label>
+            <select id="test-section">
+              <option value="reading">Reading</option>
+              <option value="listening">Listening</option>
+              <option value="writing">Writing</option>
+              <option value="speaking">Speaking</option>
+            </select>
+          </div>
+          <div>
+            <label for="test-type">Type</label>
+            <select id="test-type">
+              <option value="mcq">MCQ</option>
+              <option value="writing">Writing Prompt</option>
+              <option value="speaking">Speaking Prompt</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label for="test-passage">Passage / Prompt</label>
+          <textarea id="test-passage" placeholder="Paste passage or prompt here"></textarea>
+        </div>
+        <div>
+          <label for="test-questions">Questions (JSON for MCQ tests)</label>
+          <textarea id="test-questions" placeholder='[{"id":"q1","text":"Question?","options":["A","B","C","D"],"answerIndex":1}]'></textarea>
+        </div>
+        <div>
+          <label for="test-rubric">Rubric (optional)</label>
+          <textarea id="test-rubric" placeholder="Explain how to score this test"></textarea>
+        </div>
+        <div class="row">
+          <button class="btn btn-primary" type="submit">Save Test</button>
+          <button class="btn btn-outline" type="button" id="test-clear">Clear</button>
+        </div>
+        <div class="notice" id="test-msg" style="display:none"></div>
+      </form>
+      <div class="list" id="test-list"></div>
+    </section>
+
+    <section class="section">
+      <h2>Vocabulary Sets</h2>
+      <form class="form" id="vocab-form">
+        <div class="row">
+          <div>
+            <label for="vocab-id">Set ID (leave blank for new)</label>
+            <input id="vocab-id" type="text" placeholder="auto" />
+          </div>
+          <div>
+            <label for="vocab-title">Title</label>
+            <input id="vocab-title" type="text" required />
+          </div>
+          <div>
+            <label for="vocab-level">Level</label>
+            <input id="vocab-level" type="text" placeholder="B1, B2, C1" required />
+          </div>
+        </div>
+        <div>
+          <label for="vocab-words">Words (comma-separated)</label>
+          <textarea id="vocab-words" placeholder="analyze, evaluate, summarize" required></textarea>
+        </div>
+        <button class="btn btn-primary" type="submit">Save Vocabulary Set</button>
+        <div class="notice" id="vocab-msg" style="display:none"></div>
+      </form>
+      <div class="list" id="vocab-admin-list"></div>
+    </section>
+
+    <section class="section">
+      <h2>Grammar Tutorials</h2>
+      <form class="form" id="grammar-form">
+        <div class="row">
+          <div>
+            <label for="grammar-id">Lesson ID (leave blank for new)</label>
+            <input id="grammar-id" type="text" placeholder="auto" />
+          </div>
+          <div>
+            <label for="grammar-title">Title</label>
+            <input id="grammar-title" type="text" required />
+          </div>
+          <div>
+            <label for="grammar-level">Level</label>
+            <input id="grammar-level" type="text" placeholder="A2, B1, B2" required />
+          </div>
+        </div>
+        <div>
+          <label for="grammar-content">Lesson Content</label>
+          <textarea id="grammar-content" placeholder="Explain the rule and give examples." required></textarea>
+        </div>
+        <button class="btn btn-primary" type="submit">Save Lesson</button>
+        <div class="notice" id="grammar-msg" style="display:none"></div>
+      </form>
+      <div class="list" id="grammar-admin-list"></div>
+    </section>
+  </div>
+  <script type="module" src="assets/js/app-api.js"></script>
+</body>
+</html>
+
