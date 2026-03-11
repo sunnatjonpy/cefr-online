@@ -119,28 +119,43 @@ const renderHeader = () => {
   const isAdmin = user && user.role === "admin";
 
   container.innerHTML = `
-    <nav class="nav">
-      <div class="nav-brand">
-        <span>CEFR Mock Taker</span>
-        <span class="nav-pill">v1</span>
+    <nav class="nav" id="main-nav">
+      <div class="nav-left">
+        <div class="nav-brand">
+          <span>CEFR Mock Taker</span>
+          <span class="nav-pill">v1</span>
+        </div>
+        <button class="nav-toggle" id="nav-toggle" type="button" aria-label="Toggle navigation">
+          <span></span>
+        </button>
       </div>
-      <div class="nav-links">
-        <a href="/dashboard">Dashboard</a>
-        <a href="/mock">Take a Mock</a>
-        <a href="/vocabulary">Vocabulary</a>
-        <a href="/grammar">Grammar</a>
-        <a href="/tutorials">Tutorials</a>
-        ${isAdmin ? '<a href="/admin-panel">Admin</a>' : ""}
-      </div>
-      <div class="nav-actions">
-        ${user ? `<span class="nav-pill">${user.name}</span>` : ""}
-        ${user ? '<button class="btn btn-outline" id="logout-btn">Logout</button>' : '<a class="btn btn-outline" href="/login">Login</a>'}
+      <div class="nav-menu" id="nav-menu">
+        <div class="nav-links">
+          <a href="/dashboard">Dashboard</a>
+          <a href="/mock">Take a Mock</a>
+          <a href="/vocabulary">Vocabulary</a>
+          <a href="/grammar">Grammar</a>
+          <a href="/tutorials">Tutorials</a>
+          ${isAdmin ? '<a href="/admin-panel">Admin</a>' : ""}
+        </div>
+        <div class="nav-actions">
+          ${user ? `<span class="nav-pill">${user.name}</span>` : ""}
+          ${user ? '<button class="btn btn-outline" id="logout-btn">Logout</button>' : '<a class="btn btn-outline" href="/login">Login</a>'}
+        </div>
       </div>
     </nav>
   `;
 
   const logoutBtn = qs("#logout-btn");
   if (logoutBtn) logoutBtn.addEventListener("click", logout);
+
+  const nav = qs("#main-nav");
+  const toggle = qs("#nav-toggle");
+  if (toggle && nav) {
+    toggle.addEventListener("click", () => {
+      nav.classList.toggle("is-open");
+    });
+  }
 };
 const formatDate = (iso) => {
   try {

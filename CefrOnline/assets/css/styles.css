@@ -58,6 +58,72 @@ a {
   z-index: 10;
 }
 
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nav-toggle {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 107, 107, 0.2);
+  background: #fff;
+  color: var(--brand);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-toggle span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: currentColor;
+  position: relative;
+}
+
+.nav-toggle span::before,
+.nav-toggle span::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 18px;
+  height: 2px;
+  background: currentColor;
+  transition: transform 0.2s ease;
+}
+
+.nav-toggle span::before {
+  top: -6px;
+}
+
+.nav-toggle span::after {
+  top: 6px;
+}
+
+.nav.is-open .nav-toggle span {
+  background: transparent;
+}
+
+.nav.is-open .nav-toggle span::before {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.nav.is-open .nav-toggle span::after {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+.nav-menu {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  justify-content: space-between;
+}
+
 .nav-brand {
   display: flex;
   align-items: center;
@@ -338,10 +404,104 @@ a {
     align-items: flex-start;
     border-radius: 24px;
   }
+  .nav-left {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .nav-toggle {
+    display: inline-flex;
+  }
+  .nav-menu {
+    width: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    display: none;
+  }
+  .nav.is-open .nav-menu {
+    display: flex;
+  }
   .nav-links {
     width: 100%;
   }
   .hero {
     margin-top: 24px;
+  }
+  .nav-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .btn {
+    width: auto;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .form {
+    padding: 18px;
+  }
+  .form .row {
+    grid-template-columns: 1fr;
+  }
+  .list-item {
+    padding: 14px;
+  }
+  .table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .card {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .page {
+    padding: 18px 14px 48px;
+  }
+  .nav {
+    padding: 14px 16px;
+  }
+  .nav-brand {
+    font-size: 18px;
+  }
+  .hero h1 {
+    font-size: 28px;
+  }
+  .hero p {
+    font-size: 14px;
+  }
+  .card h3 {
+    font-size: 18px;
+  }
+  .card p {
+    font-size: 13px;
+  }
+  .btn {
+    padding: 9px 14px;
+  }
+  .badge,
+  .chip,
+  .nav-pill {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 420px) {
+  .nav-links {
+    gap: 8px;
+  }
+  .nav-links a {
+    padding: 4px 8px;
+  }
+  .form input,
+  .form select,
+  .form textarea {
+    font-size: 13px;
+  }
+  .list-item {
+    gap: 8px;
   }
 }
