@@ -330,20 +330,31 @@ const initTestPage = async () => {
                   ? ["True", "False", "Not Given"]
                   : [];
             const typeLabel =
-              type === "tfng" ? "True/False/Not Given" : type === "heading" ? "Matching Headings" : "MCQ";
+              type === "tfng"
+                ? "True/False/Not Given"
+                : type === "heading"
+                  ? "Matching Headings"
+                  : type === "gap"
+                    ? "Gap Filling"
+                    : "MCQ";
+            const isGap = type === "gap";
             return `
           <div class="list-item">
             <strong>Q${idx + 1}. ${q.text}</strong>
             <span class="badge">${typeLabel}</span>
-            ${options
-              .map(
-                (opt, optIdx) => `
+            ${
+              isGap
+                ? `<label><input type="text" class="gap-input" name="${q.id}" placeholder="Type your answer" /></label>`
+                : options
+                    .map(
+                      (opt, optIdx) => `
                 <label>
                   <input type="radio" name="${q.id}" value="${optIdx}" /> ${opt}
                 </label>
               `
-              )
-              .join("")}
+                    )
+                    .join("")
+            }
           </div>
         `;
           })
@@ -359,6 +370,19 @@ const initTestPage = async () => {
         let complete = true;
 
         test.questions.forEach((q) => {
+          const type = q.type || "mcq";
+          if (type === "gap") {
+            const input = form.querySelector(`input[name='${q.id}']`);
+            const response = input ? input.value.trim() : "";
+            if (!response) {
+              complete = false;
+              return;
+            }
+            answers.push({ questionId: q.id, response });
+            const expected = (q.answerText || "").trim().toLowerCase();
+            if (response.toLowerCase() === expected) correct += 1;
+            return;
+          }
           const selected = form.querySelector(`input[name='${q.id}']:checked`);
           if (!selected) {
             complete = false;
@@ -388,6 +412,22 @@ const initTestPage = async () => {
         });
 
         test.questions.forEach((q) => {
+          const type = q.type || "mcq";
+          if (type === "gap") {
+            const input = form.querySelector(`input[name='${q.id}']`);
+            const card = input ? input.closest(".list-item") : null;
+            if (!card) return;
+            const response = input.value.trim().toLowerCase();
+            const expected = (q.answerText || "").trim().toLowerCase();
+            if (response && response === expected) {
+              card.classList.add("correct");
+              card.classList.remove("wrong");
+            } else {
+              card.classList.add("wrong");
+              card.classList.remove("correct");
+            }
+            return;
+          }
           const selected = form.querySelector(`input[name='${q.id}']:checked`);
           const card = selected ? selected.closest(".list-item") : null;
           if (!card) return;
@@ -570,7 +610,8 @@ const initAdminPage = async () => {
   const questionDefaults = {
     mcq: ["Option A", "Option B", "Option C", "Option D"],
     tfng: ["True", "False", "Not Given"],
-    heading: ["Heading A", "Heading B", "Heading C", "Heading D"]
+    heading: ["Heading A", "Heading B", "Heading C", "Heading D"],
+    gap: []
   };
 
   const normalizeQuestion = (question, index) => {
@@ -584,7 +625,8 @@ const initAdminPage = async () => {
       type,
       text: question.text || "",
       options,
-      answerIndex: Number.isInteger(question.answerIndex) ? question.answerIndex : 0
+      answerIndex: Number.isInteger(question.answerIndex) ? question.answerIndex : 0,
+      answerText: question.answerText || ""
     };
   };
 
@@ -601,12 +643,27 @@ const initAdminPage = async () => {
     answerSelect.value = current || "0";
   };
 
-  const renderOptions = (row, type, options, answerIndex) => {
+  const renderOptions = (row, type, options, answerIndex, answerText) => {
     const wrap = qs(".q-options", row);
+    const gapWrap = qs(".q-gap", row);
     const answerSelect = qs(".q-answer", row);
+    const answerWrap = qs(".q-answer-wrap", row);
     const fixed = type === "tfng";
     const optionList = options && options.length ? options : questionDefaults[type];
 
+    if (type === "gap") {
+      wrap.innerHTML = "";
+      if (answerWrap) answerWrap.style.display = "none";
+      if (gapWrap) {
+        gapWrap.style.display = "block";
+        const input = qs(".q-gap-answer", gapWrap);
+        if (input) input.value = answerText || "";
+      }
+      return;
+    }
+
+    if (gapWrap) gapWrap.style.display = "none";
+    if (answerWrap) answerWrap.style.display = "block";
     wrap.innerHTML = optionList
       .map((opt, idx) => {
         const label = type === "heading" ? `Heading ${idx + 1}` : `Option ${idx + 1}`;
@@ -621,10 +678,12 @@ const initAdminPage = async () => {
       })
       .join("");
 
-    answerSelect.innerHTML = optionList
-      .map((opt, idx) => `<option value="${idx}">${opt}</option>`)
-      .join("");
-    answerSelect.value = Number.isInteger(answerIndex) ? String(answerIndex) : "0";
+    if (answerSelect) {
+      answerSelect.innerHTML = optionList
+        .map((opt, idx) => `<option value="${idx}">${opt}</option>`)
+        .join("");
+      answerSelect.value = Number.isInteger(answerIndex) ? String(answerIndex) : "0";
+    }
 
     if (!fixed) {
       wrap.addEventListener("input", () => updateAnswerSelect(row));
@@ -645,6 +704,7 @@ const initAdminPage = async () => {
             <option value="mcq">MCQ</option>
             <option value="tfng">True/False/Not Given</option>
             <option value="heading">Matching Headings</option>
+            <option value="gap">Gap Filling</option>
           </select>
         </div>
         <div>
@@ -653,8 +713,12 @@ const initAdminPage = async () => {
         </div>
       </div>
       <div class="q-options"></div>
+      <div class="q-gap" style="display:none">
+        <label>Correct answer</label>
+        <input class="q-gap-answer" type="text" placeholder="Enter correct word or phrase" />
+      </div>
       <div class="row">
-        <div>
+        <div class="q-answer-wrap">
           <label>Correct answer</label>
           <select class="q-answer"></select>
         </div>
@@ -666,11 +730,11 @@ const initAdminPage = async () => {
 
     qs(".q-type", row).value = q.type;
     qs(".q-text", row).value = q.text;
-    renderOptions(row, q.type, q.options, q.answerIndex);
+    renderOptions(row, q.type, q.options, q.answerIndex, q.answerText);
 
     qs(".q-type", row).addEventListener("change", (e) => {
       const newType = e.target.value;
-      renderOptions(row, newType, questionDefaults[newType], 0);
+      renderOptions(row, newType, questionDefaults[newType], 0, "");
     });
 
     qs(".q-remove", row).addEventListener("click", () => {
@@ -695,6 +759,15 @@ const initAdminPage = async () => {
     return qsa(".question-row", questionList).map((row, idx) => {
       const type = qs(".q-type", row).value;
       const text = qs(".q-text", row).value.trim();
+      if (type === "gap") {
+        const answerText = (qs(".q-gap-answer", row)?.value || "").trim();
+        return {
+          id: row.dataset.qid || `q-${Date.now()}-${idx}`,
+          type,
+          text,
+          answerText
+        };
+      }
       const options = qsa(".q-option", row).map((input) => input.value.trim());
       const answerIndex = Number(qs(".q-answer", row).value || 0);
       return {
@@ -792,9 +865,12 @@ const initAdminPage = async () => {
           return;
         }
         const emptyText = questions.some((q) => !q.text);
-        const emptyOption = questions.some((q) => q.options.some((o) => !o));
-        if (emptyText || emptyOption) {
-          testMsg.textContent = "Please fill all question texts and options.";
+        const emptyOption = questions.some(
+          (q) => q.type !== "gap" && q.options.some((o) => !o)
+        );
+        const emptyGap = questions.some((q) => q.type === "gap" && !q.answerText);
+        if (emptyText || emptyOption || emptyGap) {
+          testMsg.textContent = "Please fill all question texts and answers.";
           testMsg.style.display = "block";
           return;
         }
