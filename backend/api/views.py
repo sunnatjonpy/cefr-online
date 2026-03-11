@@ -40,6 +40,7 @@ def user_to_dict(user):
         "name": user.first_name or user.username,
         "email": user.email,
         "role": "admin" if user.is_staff or user.is_superuser else "user",
+        "dateJoined": user.date_joined.isoformat() if user.date_joined else None,
     }
 
 

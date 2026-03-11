@@ -91,13 +91,13 @@ const logout = async () => {
     // ignore
   }
   clearAuth();
-  window.location.href = "index.html";
+  window.location.href = "/login";
 };
 
 const requireAuth = () => {
   const user = getCurrentUser();
   if (!user) {
-    window.location.href = "index.html";
+    window.location.href = "/login";
     return null;
   }
   return user;
@@ -106,7 +106,7 @@ const requireAuth = () => {
 const requireAdmin = () => {
   const user = requireAuth();
   if (!user || user.role !== "admin") {
-    window.location.href = "dashboard.html";
+    window.location.href = "/dashboard";
     return null;
   }
   return user;
@@ -125,16 +125,16 @@ const renderHeader = () => {
         <span class="nav-pill">v1</span>
       </div>
       <div class="nav-links">
-        <a href="dashboard.html">Dashboard</a>
-        <a href="mock.html">Take a Mock</a>
-        <a href="vocabulary.html">Vocabulary</a>
-        <a href="grammar.html">Grammar</a>
-        <a href="tutorials.html">Tutorials</a>
-        ${isAdmin ? '<a href="admin.html">Admin</a>' : ""}
+        <a href="/dashboard">Dashboard</a>
+        <a href="/mock">Take a Mock</a>
+        <a href="/vocabulary">Vocabulary</a>
+        <a href="/grammar">Grammar</a>
+        <a href="/tutorials">Tutorials</a>
+        ${isAdmin ? '<a href="/admin-panel">Admin</a>' : ""}
       </div>
       <div class="nav-actions">
         ${user ? `<span class="nav-pill">${user.name}</span>` : ""}
-        ${user ? '<button class="btn btn-outline" id="logout-btn">Logout</button>' : '<a class="btn btn-outline" href="index.html">Login</a>'}
+        ${user ? '<button class="btn btn-outline" id="logout-btn">Logout</button>' : '<a class="btn btn-outline" href="/login">Login</a>'}
       </div>
     </nav>
   `;
@@ -157,11 +157,8 @@ const formatDate = (iso) => {
 };
 
 const initLoginPage = () => {
-  const user = getCurrentUser();
-  if (user) {
-    window.location.href = "dashboard.html";
-    return;
-  }
+  // Always require a fresh login when landing on the site.
+  clearAuth();
 
   const form = qs("#login-form");
   const msg = qs("#login-msg");
@@ -172,7 +169,7 @@ const initLoginPage = () => {
       const email = qs("#email").value.trim();
       const password = qs("#password").value.trim();
       await login(email, password);
-      window.location.href = "dashboard.html";
+      window.location.href = "/dashboard";
     } catch (err) {
       msg.textContent = err.message || "Login failed.";
       msg.style.display = "block";
@@ -183,7 +180,7 @@ const initLoginPage = () => {
 const initSignupPage = () => {
   const user = getCurrentUser();
   if (user) {
-    window.location.href = "dashboard.html";
+    window.location.href = "/dashboard";
     return;
   }
 
@@ -197,7 +194,7 @@ const initSignupPage = () => {
       const email = qs("#email").value.trim();
       const password = qs("#password").value.trim();
       await signup(name, email, password);
-      window.location.href = "dashboard.html";
+      window.location.href = "/dashboard";
     } catch (err) {
       msg.textContent = err.message || "Signup failed.";
       msg.style.display = "block";
@@ -248,7 +245,7 @@ const initSectionPage = async () => {
   const user = requireAuth();
   if (!user) return;
 
-  const section = new URLSearchParams(window.location.search).get("section") || "reading";
+  const section = new URLSearchParams(window.location.search).get("/section") || "reading";
   const header = qs("#section-title");
   if (header) header.textContent = `${SECTION_LABELS[section] || section} Tests`;
 
@@ -265,7 +262,7 @@ const initSectionPage = async () => {
     grid.innerHTML = tests
       .map(
         (t, idx) => `
-        <a class="card" href="test.html?section=${section}&id=${t.id}" style="--delay:${idx * 0.05}s">
+        <a class="card" href="/test?section=${section}&id=${t.id}" style="--delay:${idx * 0.05}s">
           <span class="tag">${SECTION_LABELS[section]}</span>
           <h3>${t.title}</h3>
           <p>${t.type === "mcq" ? "Multiple choice" : "Performance prompt"}</p>
@@ -308,12 +305,22 @@ const initTestPage = async () => {
 
     if (test.type === "mcq") {
       form.innerHTML =
-        test.questions
-          .map(
-            (q, idx) => `
+        (test.questions || [])
+          .map((q, idx) => {
+            const type = q.type || "mcq";
+            const options =
+              q.options && q.options.length
+                ? q.options
+                : type === "tfng"
+                  ? ["True", "False", "Not Given"]
+                  : [];
+            const typeLabel =
+              type === "tfng" ? "True/False/Not Given" : type === "heading" ? "Matching Headings" : "MCQ";
+            return `
           <div class="list-item">
             <strong>Q${idx + 1}. ${q.text}</strong>
-            ${q.options
+            <span class="badge">${typeLabel}</span>
+            ${options
               .map(
                 (opt, optIdx) => `
                 <label>
@@ -323,8 +330,8 @@ const initTestPage = async () => {
               )
               .join("")}
           </div>
-        `
-          )
+        `;
+          })
           .join("") +
         '<button class="btn btn-primary" type="submit">Submit Answers</button>';
 
@@ -365,9 +372,22 @@ const initTestPage = async () => {
           }
         });
 
+        test.questions.forEach((q) => {
+          const selected = form.querySelector(`input[name='${q.id}']:checked`);
+          const card = selected ? selected.closest(".list-item") : null;
+          if (!card) return;
+          const selectedIndex = Number(selected.value);
+          if (selectedIndex === q.answerIndex) {
+            card.classList.add("correct");
+            card.classList.remove("wrong");
+          } else {
+            card.classList.add("wrong");
+            card.classList.remove("correct");
+          }
+        });
+
         msg.textContent = `Saved! Your score is ${score}.`;
         msg.style.display = "block";
-        form.reset();
       });
     } else {
       form.innerHTML = `
@@ -512,6 +532,7 @@ const initAdminPage = async () => {
             <td>${u.name}</td>
             <td>${u.email}</td>
             <td>${u.role}</td>
+            <td>${u.dateJoined ? formatDate(u.dateJoined) : "-"}</td>
           </tr>
         `
         )
@@ -526,7 +547,159 @@ const initAdminPage = async () => {
   const testForm = qs("#test-form");
   const testMsg = qs("#test-msg");
   const testList = qs("#test-list");
+  const questionsSection = qs("#questions-section");
+  const questionList = qs("#questions-builder");
+  const addQuestionBtn = qs("#add-question");
   let cachedTests = [];
+
+  const questionDefaults = {
+    mcq: ["Option A", "Option B", "Option C", "Option D"],
+    tfng: ["True", "False", "Not Given"],
+    heading: ["Heading A", "Heading B", "Heading C", "Heading D"]
+  };
+
+  const normalizeQuestion = (question, index) => {
+    const type = question.type || "mcq";
+    const options =
+      question.options && question.options.length
+        ? question.options
+        : questionDefaults[type] || questionDefaults.mcq;
+    return {
+      id: question.id || `q-${Date.now()}-${index}`,
+      type,
+      text: question.text || "",
+      options,
+      answerIndex: Number.isInteger(question.answerIndex) ? question.answerIndex : 0
+    };
+  };
+
+  const updateAnswerSelect = (row) => {
+    const answerSelect = qs(".q-answer", row);
+    const optionInputs = qsa(".q-option", row);
+    const current = answerSelect.value;
+    answerSelect.innerHTML = optionInputs
+      .map((input, idx) => {
+        const label = input.value.trim() || `Option ${idx + 1}`;
+        return `<option value="${idx}">${label}</option>`;
+      })
+      .join("");
+    answerSelect.value = current || "0";
+  };
+
+  const renderOptions = (row, type, options, answerIndex) => {
+    const wrap = qs(".q-options", row);
+    const answerSelect = qs(".q-answer", row);
+    const fixed = type === "tfng";
+    const optionList = options && options.length ? options : questionDefaults[type];
+
+    wrap.innerHTML = optionList
+      .map((opt, idx) => {
+        const label = type === "heading" ? `Heading ${idx + 1}` : `Option ${idx + 1}`;
+        return `
+          <div>
+            <label>${label}</label>
+            <input class="q-option" data-index="${idx}" type="text" value="${opt}" ${
+              fixed ? "disabled" : ""
+            } />
+          </div>
+        `;
+      })
+      .join("");
+
+    answerSelect.innerHTML = optionList
+      .map((opt, idx) => `<option value="${idx}">${opt}</option>`)
+      .join("");
+    answerSelect.value = Number.isInteger(answerIndex) ? String(answerIndex) : "0";
+
+    if (!fixed) {
+      wrap.addEventListener("input", () => updateAnswerSelect(row));
+    }
+  };
+
+  const renderQuestionRow = (question) => {
+    if (!questionList) return;
+    const q = normalizeQuestion(question, questionList.children.length);
+    const row = document.createElement("div");
+    row.className = "list-item question-row";
+    row.dataset.qid = q.id;
+    row.innerHTML = `
+      <div class="row">
+        <div>
+          <label>Type</label>
+          <select class="q-type">
+            <option value="mcq">MCQ</option>
+            <option value="tfng">True/False/Not Given</option>
+            <option value="heading">Matching Headings</option>
+          </select>
+        </div>
+        <div>
+          <label>Question text</label>
+          <input class="q-text" type="text" placeholder="Enter question or statement" />
+        </div>
+      </div>
+      <div class="q-options"></div>
+      <div class="row">
+        <div>
+          <label>Correct answer</label>
+          <select class="q-answer"></select>
+        </div>
+        <div>
+          <button class="btn btn-outline q-remove" type="button">Remove</button>
+        </div>
+      </div>
+    `;
+
+    qs(".q-type", row).value = q.type;
+    qs(".q-text", row).value = q.text;
+    renderOptions(row, q.type, q.options, q.answerIndex);
+
+    qs(".q-type", row).addEventListener("change", (e) => {
+      const newType = e.target.value;
+      renderOptions(row, newType, questionDefaults[newType], 0);
+    });
+
+    qs(".q-remove", row).addEventListener("click", () => {
+      row.remove();
+    });
+
+    questionList.appendChild(row);
+  };
+
+  const setQuestions = (questions) => {
+    if (!questionList) return;
+    questionList.innerHTML = "";
+    if (!questions || questions.length === 0) {
+      renderQuestionRow({ type: "mcq" });
+      return;
+    }
+    questions.forEach((q, idx) => renderQuestionRow(normalizeQuestion(q, idx)));
+  };
+
+  const collectQuestions = () => {
+    if (!questionList) return [];
+    return qsa(".question-row", questionList).map((row, idx) => {
+      const type = qs(".q-type", row).value;
+      const text = qs(".q-text", row).value.trim();
+      const options = qsa(".q-option", row).map((input) => input.value.trim());
+      const answerIndex = Number(qs(".q-answer", row).value || 0);
+      return {
+        id: row.dataset.qid || `q-${Date.now()}-${idx}`,
+        type,
+        text,
+        options: options.length ? options : questionDefaults[type],
+        answerIndex
+      };
+    });
+  };
+
+  const toggleQuestions = () => {
+    if (!questionsSection) return;
+    const isMcq = qs("#test-type").value === "mcq";
+    questionsSection.style.display = isMcq ? "block" : "none";
+    if (isMcq && questionList && questionList.children.length === 0) {
+      renderQuestionRow({ type: "mcq" });
+    }
+  };
 
   const renderTests = async () => {
     cachedTests = await apiRequest("/tests");
@@ -556,9 +729,9 @@ const initAdminPage = async () => {
         qs("#test-section").value = test.section;
         qs("#test-type").value = test.type;
         qs("#test-passage").value = test.passage || test.prompt || "";
-        qs("#test-questions").value =
-          test.questions && test.questions.length ? JSON.stringify(test.questions, null, 2) : "";
+        setQuestions(test.questions || []);
         qs("#test-rubric").value = test.rubric || "";
+        toggleQuestions();
       });
     });
 
@@ -572,6 +745,12 @@ const initAdminPage = async () => {
   };
 
   if (testForm) {
+    if (addQuestionBtn) {
+      addQuestionBtn.addEventListener("click", () => renderQuestionRow({ type: "mcq" }));
+    }
+
+    qs("#test-type").addEventListener("change", toggleQuestions);
+
     testForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       testMsg.style.display = "none";
@@ -581,7 +760,6 @@ const initAdminPage = async () => {
       const section = qs("#test-section").value;
       const type = qs("#test-type").value;
       const passage = qs("#test-passage").value.trim();
-      const questionsRaw = qs("#test-questions").value.trim();
       const rubric = qs("#test-rubric").value.trim();
 
       if (!title) {
@@ -592,15 +770,16 @@ const initAdminPage = async () => {
 
       let questions = [];
       if (type === "mcq") {
-        if (!questionsRaw) {
-          testMsg.textContent = "Questions JSON is required for MCQ tests.";
+        questions = collectQuestions();
+        if (!questions.length) {
+          testMsg.textContent = "Please add at least one question.";
           testMsg.style.display = "block";
           return;
         }
-        try {
-          questions = JSON.parse(questionsRaw);
-        } catch {
-          testMsg.textContent = "Invalid JSON format.";
+        const emptyText = questions.some((q) => !q.text);
+        const emptyOption = questions.some((q) => q.options.some((o) => !o));
+        if (emptyText || emptyOption) {
+          testMsg.textContent = "Please fill all question texts and options.";
           testMsg.style.display = "block";
           return;
         }
@@ -623,15 +802,23 @@ const initAdminPage = async () => {
       }
 
       testForm.reset();
+      setQuestions([]);
+      toggleQuestions();
       await renderTests();
       testMsg.textContent = "Saved.";
       testMsg.style.display = "block";
     });
 
-    qs("#test-clear").addEventListener("click", () => testForm.reset());
+    qs("#test-clear").addEventListener("click", () => {
+      testForm.reset();
+      setQuestions([]);
+      toggleQuestions();
+    });
   }
 
   await renderTests();
+  setQuestions([]);
+  toggleQuestions();
 
   const vocabForm = qs("#vocab-form");
   const vocabList = qs("#vocab-admin-list");
@@ -841,4 +1028,8 @@ const initPage = async () => {
 document.addEventListener("DOMContentLoaded", () => {
   initPage().catch((err) => console.error(err));
 });
+
+
+
+
 

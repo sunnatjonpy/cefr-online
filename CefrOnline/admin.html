@@ -26,6 +26,7 @@
               <th>Name</th>
               <th>Email</th>
               <th>Role</th>
+              <th>Time</th>
             </tr>
           </thead>
           <tbody id="users-table"></tbody>
@@ -69,9 +70,10 @@
           <label for="test-passage">Passage / Prompt</label>
           <textarea id="test-passage" placeholder="Paste passage or prompt here"></textarea>
         </div>
-        <div>
-          <label for="test-questions">Questions (JSON for MCQ tests)</label>
-          <textarea id="test-questions" placeholder='[{"id":"q1","text":"Question?","options":["A","B","C","D"],"answerIndex":1}]'></textarea>
+        <div id="questions-section">
+          <label>Questions</label>
+          <div class="list" id="questions-builder"></div>
+          <button class="btn btn-outline" type="button" id="add-question">Add Question</button>
         </div>
         <div>
           <label for="test-rubric">Rubric (optional)</label>
@@ -143,4 +145,5 @@
   <script type="module" src="assets/js/app-api.js"></script>
 </body>
 </html>
+
 
