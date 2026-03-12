@@ -209,6 +209,10 @@ a {
   margin: 0;
 }
 
+.muted {
+  color: var(--muted);
+}
+
 .grid {
   display: grid;
   gap: var(--gap);
@@ -375,6 +379,88 @@ a {
   background: rgba(15, 107, 107, 0.12);
   color: var(--brand);
   font-size: 13px;
+}
+
+.timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(34, 51, 59, 0.08);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.highlight-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+
+.highlight-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  padding: 0;
+}
+
+.highlight-clear {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  background: #fff;
+}
+
+.highlightable {
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.editor {
+  border: 1px solid #e6dfd4;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid #eee4d6;
+  background: #f8f4ec;
+}
+
+.editor-toolbar .btn {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.editor-area {
+  min-height: 160px;
+  padding: 14px;
+  outline: none;
+  font-size: 14px;
+}
+
+.rich-text p {
+  margin: 0 0 12px;
+}
+
+.ck.ck-editor {
+  width: 100%;
+}
+
+.ck-editor__editable {
+  min-height: 180px;
 }
 
 .footer {

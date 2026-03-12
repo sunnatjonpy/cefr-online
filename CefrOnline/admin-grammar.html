@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CEFR Mock Taker | Admin Grammar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/styles.css" />
+  {% block extrahead %}
+  <script>
+    window.CKEDITOR_BASEPATH = "/assets/ckeditor/";
+  </script>
+  {% endblock %}
+</head>
+<body data-page="admin">
+  <div class="page">
+    <div id="site-header"></div>
+    <section class="hero">
+      <h1>Grammar Tutorials</h1>
+      <p>Create and update grammar lessons.</p>
+    </section>
+
+    <section class="section">
+      <div class="grid">
+        <a class="card" href="/admin-panel">
+          <span class="tag">Overview</span>
+          <h3>Admin Home</h3>
+          <p>Back to the admin dashboard.</p>
+          <span class="chip">Overview</span>
+          <span class="accent"></span>
+        </a>
+        <a class="card" href="/admin-users">
+          <span class="tag">Users</span>
+          <h3>User Accounts</h3>
+          <p>Review registrations.</p>
+          <span class="chip">Users</span>
+          <span class="accent"></span>
+        </a>
+        <a class="card" href="/admin-tests">
+          <span class="tag">Mock Tests</span>
+          <h3>Manage Tests</h3>
+          <p>Create and edit mock tests.</p>
+          <span class="chip">Tests</span>
+          <span class="accent"></span>
+        </a>
+        <a class="card" href="/admin-vocab">
+          <span class="tag">Vocabulary</span>
+          <h3>Vocabulary Sets</h3>
+          <p>Manage word lists.</p>
+          <span class="chip">Vocabulary</span>
+          <span class="accent"></span>
+        </a>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Grammar Tutorials</h2>
+      <form class="form" id="grammar-form">
+        <div class="row">
+          <div>
+            <label for="grammar-id">Lesson ID (leave blank for new)</label>
+            <input id="grammar-id" type="text" placeholder="auto" />
+          </div>
+          <div>
+            <label for="grammar-title">Title</label>
+            <input id="grammar-title" type="text" required />
+          </div>
+          <div>
+            <label for="grammar-level">Level</label>
+            <input id="grammar-level" type="text" placeholder="A2, B1, B2" required />
+          </div>
+        </div>
+        <div>
+          <label for="grammar-content">Lesson Content</label>
+          <textarea id="grammar-content" placeholder="Explain the rule and give examples." required></textarea>
+        </div>
+        <button class="btn btn-primary" type="submit">Save Lesson</button>
+        <div class="notice" id="grammar-msg" style="display:none"></div>
+      </form>
+      <div class="list" id="grammar-admin-list"></div>
+    </section>
+  </div>
+  <script src="/assets/ckeditor/ckeditor.js"></script>
+  <script type="module" src="assets/js/app-api.js?v=20260312"></script>
+</body>
+</html>
