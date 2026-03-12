@@ -10,10 +10,11 @@ const SECTION_LABELS = {
 };
 
 const SECTION_TIMERS = {
-  reading: 2 * 20,
-  listening: 15 * 60,
-  writing: 30 * 60
+  reading: 60 * 60,
+  listening: 60 * 60,
+  writing: 60 * 60
 };
+const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 const qs = (sel, root = document) => root.querySelector(sel);
 const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -266,7 +267,7 @@ const initSectionPage = async () => {
   const user = requireAuth();
   if (!user) return;
 
-  const section = new URLSearchParams(window.location.search).get("/section") || "reading";
+  const section = new URLSearchParams(window.location.search).get("section") || "reading";
   const header = qs("#section-title");
   if (header) header.textContent = `${SECTION_LABELS[section] || section} Tests`;
 
@@ -330,6 +331,8 @@ const initTestPage = async () => {
     const msg = qs("#test-msg");
 
     let submitted = false;
+    const hasReadingParts =
+      test.section === "reading" && Array.isArray(test.questions) && test.questions.some((q) => q && q.kind === "part");
 
     const finalizeSubmission = (scoreText, auto) => {
       msg.textContent = auto ? `Time is up. Your score is ${scoreText}.` : `Saved! Your score is ${scoreText}.`;
@@ -337,6 +340,146 @@ const initTestPage = async () => {
       form.querySelectorAll("input, button, select, textarea").forEach((el) => {
         el.disabled = true;
       });
+    };
+
+    const applyReadingHighlights = (results) => {
+      Object.entries(results).forEach(([qid, isCorrect]) => {
+        const row = form.querySelector(`[data-qid="${qid}"]`);
+        if (!row) return;
+        if (isCorrect) {
+          row.classList.add("correct");
+          row.classList.remove("wrong");
+        } else {
+          row.classList.add("wrong");
+          row.classList.remove("correct");
+        }
+      });
+    };
+
+    const renderReadingPartsForm = (parts) => {
+      const partMap = new Map((parts || []).map((p) => [p.part, p]));
+      const part1 = partMap.get(1);
+      const part2 = partMap.get(2);
+      const part3 = partMap.get(3);
+      const part4 = partMap.get(4);
+      const part5 = partMap.get(5);
+
+      const renderGapSet = (part) => {
+        if (!part) return "";
+        const gaps = part.gaps || [];
+        return `
+          <div class="list-item reading-part">
+            <h3>${part.title || "Part 1 - Gap Filling"}</h3>
+            ${part.passage ? `<div class="rich-text reading-passage">${part.passage}</div>` : ""}
+            <div class="list">
+              ${gaps
+                .map(
+                  (gap, idx) => `
+                    <div class="list-item" data-qid="${gap.id}">
+                      <label>Gap ${idx + 1}</label>
+                      <input type="text" name="${gap.id}" placeholder="Type the missing word" />
+                    </div>
+                  `
+                )
+                .join("")}
+            </div>
+          </div>
+        `;
+      };
+
+      const renderMatching = (part, prefix, titleFallback) => {
+        if (!part) return "";
+        const choices = part.choices || [];
+        const items = part.items || [];
+        return `
+          <div class="list-item reading-part">
+            <h3>${part.title || titleFallback}</h3>
+            ${part.prompt ? `<p>${part.prompt}</p>` : ""}
+            <div class="list-item">
+              <strong>Choices</strong>
+              <ol class="list">
+                ${choices.map((choice, idx) => `<li>${ALPHABET[idx] || idx + 1}. ${choice}</li>`).join("")}
+              </ol>
+            </div>
+            <div class="list">
+              ${items
+                .map(
+                  (item, idx) => `
+                    <div class="list-item" data-qid="${prefix}-${idx}">
+                      <p>${item}</p>
+                      <label>Answer</label>
+                      <select name="${prefix}-${idx}">
+                        <option value="">Select</option>
+                        ${choices
+                          .map(
+                            (choice, optIdx) =>
+                              `<option value="${optIdx}">${ALPHABET[optIdx] || optIdx + 1}. ${choice}</option>`
+                          )
+                          .join("")}
+                      </select>
+                    </div>
+                  `
+                )
+                .join("")}
+            </div>
+          </div>
+        `;
+      };
+
+      const renderMixed = (part, prefix, titleFallback) => {
+        if (!part) return "";
+        const questions = part.questions || [];
+        const renderQuestion = (q, idx) => {
+          const type = q.type || "mcq";
+          const qid = q.id || `${prefix}-${idx}`;
+          const options =
+            q.options && q.options.length
+              ? q.options
+              : type === "tfng"
+                ? ["True", "False", "Not Given"]
+                : [];
+          const typeLabel =
+            type === "tfng" ? "True/False/Not Given" : type === "gap" ? "Gap Filling" : "MCQ";
+          const isGap = type === "gap";
+          return `
+            <div class="list-item" data-qid="${qid}">
+              <strong>Q${idx + 1}. ${q.text || ""}</strong>
+              <span class="badge">${typeLabel}</span>
+              ${
+                isGap
+                  ? `<label><input type="text" class="gap-input" name="${qid}" placeholder="Type your answer" /></label>`
+                  : options
+                      .map(
+                        (opt, optIdx) => `
+                          <label>
+                            <input type="radio" name="${qid}" value="${optIdx}" /> ${opt}
+                          </label>
+                        `
+                      )
+                      .join("")
+              }
+            </div>
+          `;
+        };
+        return `
+          <div class="list-item reading-part">
+            <h3>${part.title || titleFallback}</h3>
+            ${part.passage ? `<div class="rich-text reading-passage">${part.passage}</div>` : ""}
+            <div class="list">
+              ${questions.map((q, idx) => renderQuestion(q, idx)).join("")}
+            </div>
+          </div>
+        `;
+      };
+
+      return `
+        ${renderGapSet(part1)}
+        ${renderMatching(part2, "p2", "Part 2 - Matching Information")}
+        ${renderMatching(part3, "p3", "Part 3 - Matching Headings")}
+        ${renderMixed(part4, "p4", "Part 4 - Long Text")}
+        ${renderMixed(part5, "p5", "Part 5 - Long Text")}
+        <button class="btn btn-primary" type="submit">Submit Answers</button>
+      `;
     };
 
     const applyHighlights = () => {
@@ -426,6 +569,118 @@ const initTestPage = async () => {
       finalizeSubmission(score, auto);
     };
 
+    const submitReadingParts = async (auto = false) => {
+      if (submitted) return;
+      const answers = [];
+      const results = {};
+      let correct = 0;
+      let total = 0;
+      let complete = true;
+
+      const partMap = new Map((test.questions || []).map((p) => [p.part, p]));
+
+      const part1 = partMap.get(1);
+      if (part1 && Array.isArray(part1.gaps)) {
+        part1.gaps.forEach((gap) => {
+          total += 1;
+          const input = form.querySelector(`input[name='${gap.id}']`);
+          const response = input ? input.value.trim() : "";
+          if (!response) {
+            complete = false;
+            if (!auto) return;
+          }
+          answers.push({ questionId: gap.id, response });
+          const expected = (gap.answerText || "").trim().toLowerCase();
+          const isCorrect = response.toLowerCase() === expected;
+          results[gap.id] = isCorrect;
+          if (isCorrect) correct += 1;
+        });
+      }
+
+      const handleMatching = (part, prefix) => {
+        if (!part || !Array.isArray(part.items)) return;
+        const expectedAnswers = Array.isArray(part.answers) ? part.answers : [];
+        part.items.forEach((_, idx) => {
+          total += 1;
+          const select = form.querySelector(`select[name='${prefix}-${idx}']`);
+          const value = select ? select.value : "";
+          if (value === "") {
+            complete = false;
+            if (!auto) return;
+          }
+          const selectedIndex = value === "" ? null : Number(value);
+          answers.push({ questionId: `${prefix}-${idx}`, selectedIndex });
+          const isCorrect = selectedIndex === expectedAnswers[idx];
+          results[`${prefix}-${idx}`] = isCorrect;
+          if (isCorrect) correct += 1;
+        });
+      };
+
+      handleMatching(partMap.get(2), "p2");
+      handleMatching(partMap.get(3), "p3");
+
+      const handleMixed = (part, prefix) => {
+        if (!part || !Array.isArray(part.questions)) return;
+        part.questions.forEach((q, idx) => {
+          const type = q.type || "mcq";
+          const qid = q.id || `${prefix}-${idx}`;
+          total += 1;
+          if (type === "gap") {
+            const input = form.querySelector(`input[name='${qid}']`);
+            const response = input ? input.value.trim() : "";
+            if (!response) {
+              complete = false;
+              if (!auto) return;
+            }
+            answers.push({ questionId: qid, response });
+            const expected = (q.answerText || "").trim().toLowerCase();
+            const isCorrect = response.toLowerCase() === expected;
+            results[qid] = isCorrect;
+            if (isCorrect) correct += 1;
+            return;
+          }
+          const selected = form.querySelector(`input[name='${qid}']:checked`);
+          if (!selected) {
+            complete = false;
+            if (!auto) return;
+            answers.push({ questionId: qid, selectedIndex: null });
+            results[qid] = false;
+            return;
+          }
+          const selectedIndex = Number(selected.value);
+          answers.push({ questionId: qid, selectedIndex });
+          const isCorrect = selectedIndex === q.answerIndex;
+          results[qid] = isCorrect;
+          if (isCorrect) correct += 1;
+        });
+      };
+
+      handleMixed(partMap.get(4), "p4");
+      handleMixed(partMap.get(5), "p5");
+
+      if (!complete && !auto) {
+        msg.textContent = "Please answer all questions.";
+        msg.style.display = "block";
+        return;
+      }
+
+      const score = `${correct} / ${total}`;
+      await apiRequest("/attempts", {
+        method: "POST",
+        body: {
+          testId: test.id,
+          section: test.section,
+          type: test.type,
+          score,
+          answers
+        }
+      });
+
+      applyReadingHighlights(results);
+      submitted = true;
+      finalizeSubmission(score, auto);
+    };
+
     const submitWriting = async (auto = false) => {
       if (submitted) return;
       const response = qs("#response").value.trim();
@@ -450,7 +705,14 @@ const initTestPage = async () => {
       });
     };
 
-    if (test.type === "mcq") {
+    if (hasReadingParts) {
+      form.innerHTML = renderReadingPartsForm(test.questions || []);
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        msg.style.display = "none";
+        await submitReadingParts(false);
+      });
+    } else if (test.type === "mcq") {
       form.innerHTML =
         (test.questions || [])
           .map((q, idx) => {
@@ -529,7 +791,9 @@ const initTestPage = async () => {
         remaining -= 1;
         if (remaining <= 0) {
           clearInterval(timerId);
-          if (test.type === "mcq") {
+          if (hasReadingParts) {
+            await submitReadingParts(true);
+          } else if (test.type === "mcq") {
             await submitMcq(true);
           } else {
             await submitWriting(true);
@@ -540,11 +804,11 @@ const initTestPage = async () => {
       }, 1000);
     }
 
-    const passageContainer = qs("#passage-container");
-    if (passageContainer && ["reading", "listening"].includes(test.section)) {
-      passageContainer.classList.add("highlightable");
-      passageContainer.setAttribute("contenteditable", "true");
-      passageContainer.addEventListener("beforeinput", (e) => {
+    const enableHighlight = (target) => {
+      if (!target) return;
+      target.classList.add("highlightable");
+      target.setAttribute("contenteditable", "true");
+      target.addEventListener("beforeinput", (e) => {
         if (e.inputType && (e.inputType.startsWith("insert") || e.inputType.startsWith("delete"))) {
           e.preventDefault();
         }
@@ -559,12 +823,12 @@ const initTestPage = async () => {
         <button class="highlight-btn" type="button" data-color="#bbdefb" title="Blue" style="background:#bbdefb"></button>
         <button class="highlight-clear" type="button" data-clear="true">Clear</button>
       `;
-      passageContainer.parentElement.insertBefore(toolbar, passageContainer);
+      target.parentElement.insertBefore(toolbar, target);
 
       toolbar.addEventListener("click", (e) => {
         const btn = e.target.closest("button");
         if (!btn) return;
-        passageContainer.focus();
+        target.focus();
         if (btn.dataset.clear) {
           document.execCommand("removeFormat", false, null);
           return;
@@ -572,6 +836,12 @@ const initTestPage = async () => {
         const color = btn.dataset.color;
         document.execCommand("hiliteColor", false, color);
       });
+    };
+
+    if (["reading", "listening"].includes(test.section)) {
+      const passageContainer = qs("#passage-container");
+      if (passageContainer) enableHighlight(passageContainer);
+      qsa(".reading-passage").forEach((el) => enableHighlight(el));
     }
   } catch (err) {
     container.innerHTML = `<div class="notice">${err.message || "Test not found."}</div>`;
@@ -670,6 +940,10 @@ const initProfilePage = async () => {
     list.innerHTML = `<div class="notice">${err.message || "Failed to load attempts."}</div>`;
   }
 };
+const initAdminHubPage = () => {
+  const user = requireAdmin();
+  if (!user) return;
+};
 const initAdminPage = async () => {
   const user = requireAdmin();
   if (!user) return;
@@ -703,6 +977,10 @@ const initAdminPage = async () => {
   const questionsSection = qs("#questions-section");
   const questionList = qs("#questions-builder");
   const addQuestionBtn = qs("#add-question");
+  const testSectionSelect = qs("#test-section");
+  const testTypeSelect = qs("#test-type");
+  const passageWrap = qs("#test-passage-wrap");
+  const readingPartsWrap = qs("#reading-parts");
   const passageInput = qs("#test-passage");
   const rubricInput = qs("#test-rubric");
   const grammarContentInput = qs("#grammar-content");
@@ -766,6 +1044,643 @@ const initAdminPage = async () => {
     tfng: ["True", "False", "Not Given"],
     heading: ["Heading A", "Heading B", "Heading C", "Heading D"],
     gap: []
+  };
+  const readingQuestionDefaults = {
+    mcq: ["Option A", "Option B", "Option C", "Option D"],
+    tfng: ["True", "False", "Not Given"],
+    gap: []
+  };
+
+  const isReadingSection = () => testSectionSelect && testSectionSelect.value === "reading";
+
+  const ensureReadingPartsUI = () => {
+    if (!readingPartsWrap || readingPartsWrap.childElementCount) return;
+    readingPartsWrap.innerHTML = `
+      <div class="list">
+        <div class="list-item" data-part="1">
+          <h3>Part 1 - Gap Filling</h3>
+          <p class="muted">Provide a 50-60 word text and 6 missing words.</p>
+          <label for="part1-passage">Passage (use [1]...[6] to mark gaps)</label>
+          <textarea id="part1-passage" placeholder="Enter the text with [1]...[6] placeholders."></textarea>
+          <div class="grid" id="part1-answers"></div>
+        </div>
+        <div class="list-item" data-part="2">
+          <h3>Part 2 - Matching Information</h3>
+          <p class="muted">Add 8 pieces of information and 8 short texts to match.</p>
+          <div class="row">
+            <div>
+              <label>Information (8)</label>
+              <div class="list" id="part2-choices"></div>
+            </div>
+            <div>
+              <label>Texts (8)</label>
+              <div class="list" id="part2-items"></div>
+            </div>
+          </div>
+          <label>Answer Key</label>
+          <div class="list" id="part2-answers"></div>
+        </div>
+        <div class="list-item" data-part="3">
+          <h3>Part 3 - Matching Headings</h3>
+          <p class="muted">Add 10 headings (A-J) and 6 texts to match.</p>
+          <div class="row">
+            <div>
+              <label>Headings (10)</label>
+              <div class="list" id="part3-choices"></div>
+            </div>
+            <div>
+              <label>Texts (6)</label>
+              <div class="list" id="part3-items"></div>
+            </div>
+          </div>
+          <label>Answer Key</label>
+          <div class="list" id="part3-answers"></div>
+        </div>
+        <div class="list-item" data-part="4">
+          <h3>Part 4 - Long Text + MCQ/TFNG</h3>
+          <p class="muted">Add a long passage with 4 MCQ and 5 TFNG questions.</p>
+          <label for="part4-passage">Passage</label>
+          <textarea id="part4-passage" placeholder="Enter the long passage for part 4."></textarea>
+          <div class="list" id="part4-questions"></div>
+          <button class="btn btn-outline" type="button" id="part4-add-question">Add Question</button>
+        </div>
+        <div class="list-item" data-part="5">
+          <h3>Part 5 - Long Text + Mixed</h3>
+          <p class="muted">Add a long passage with 4 gap-fill and 2 MCQ questions.</p>
+          <label for="part5-passage">Passage</label>
+          <textarea id="part5-passage" placeholder="Enter the long passage for part 5."></textarea>
+          <div class="list" id="part5-questions"></div>
+          <button class="btn btn-outline" type="button" id="part5-add-question">Add Question</button>
+        </div>
+      </div>
+    `;
+
+    const buildInputs = (containerId, count, labelPrefix, multiline = false, placeholder = "") => {
+      const container = qs(`#${containerId}`);
+      if (!container) return;
+      container.innerHTML = Array.from({ length: count })
+        .map((_, idx) => {
+          const id = `${containerId}-${idx + 1}`;
+          return `
+            <div>
+              <label for="${id}">${labelPrefix} ${idx + 1}</label>
+              ${
+                multiline
+                  ? `<textarea id="${id}" placeholder="${placeholder}"></textarea>`
+                  : `<input id="${id}" type="text" placeholder="${placeholder}" />`
+              }
+            </div>
+          `;
+        })
+        .join("");
+    };
+
+    buildInputs("part1-answers", 6, "Gap answer");
+    buildInputs("part2-choices", 8, "Info");
+    buildInputs("part2-items", 8, "Text", true, "20-30 words");
+    buildInputs("part3-choices", 10, "Heading");
+    buildInputs("part3-items", 6, "Text", true, "20-30 words");
+
+    const buildAnswerSelects = (containerId, count, choicePrefix, choiceCount) => {
+      const container = qs(`#${containerId}`);
+      if (!container) return;
+      container.innerHTML = Array.from({ length: count })
+        .map((_, idx) => {
+          const id = `${containerId}-${idx + 1}`;
+          return `
+            <div>
+              <label for="${id}">Answer for text ${idx + 1}</label>
+              <select id="${id}"></select>
+            </div>
+          `;
+        })
+        .join("");
+
+      const syncOptions = () => {
+        const choices = Array.from({ length: choiceCount }).map((_, i) => {
+          const input = qs(`#${choicePrefix}-${i + 1}`);
+          return (input && input.value.trim()) || `Choice ${i + 1}`;
+        });
+        qsa(`#${containerId} select`).forEach((select) => {
+          const current = select.value;
+          select.innerHTML =
+            `<option value="">Select</option>` +
+            choices
+              .map((choice, idx) => `<option value="${idx}">${ALPHABET[idx] || idx + 1}. ${choice}</option>`)
+              .join("");
+          if (current) select.value = current;
+        });
+      };
+
+      const choiceContainer = qs(`#${choicePrefix}`);
+      if (choiceContainer) {
+        choiceContainer.addEventListener("input", syncOptions);
+      }
+      syncOptions();
+    };
+
+    buildAnswerSelects("part2-answers", 8, "part2-choices", 8);
+    buildAnswerSelects("part3-answers", 6, "part3-choices", 10);
+
+    const buildQuestionRow = (listEl, allowedTypes, question = {}) => {
+      if (!listEl) return;
+      const qid = question.id || `rq-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
+      const row = document.createElement("div");
+      row.className = "list-item question-row";
+      row.dataset.qid = qid;
+      row.innerHTML = `
+        <div class="row">
+          <div>
+            <label>Type</label>
+            <select class="rq-type">
+              ${allowedTypes
+                .map((type) => {
+                  const label =
+                    type === "tfng" ? "True/False/Not Given" : type === "gap" ? "Gap Filling" : "MCQ";
+                  return `<option value="${type}">${label}</option>`;
+                })
+                .join("")}
+            </select>
+          </div>
+          <div>
+            <label>Question text</label>
+            <input class="rq-text" type="text" placeholder="Enter the question" />
+          </div>
+        </div>
+        <div class="rq-options"></div>
+        <div class="rq-gap" style="display:none">
+          <label>Correct answer</label>
+          <input class="rq-gap-answer" type="text" placeholder="Enter correct word or phrase" />
+        </div>
+        <div class="row">
+          <div class="rq-answer-wrap">
+            <label>Correct answer</label>
+            <select class="rq-answer"></select>
+          </div>
+          <div>
+            <button class="btn btn-outline rq-remove" type="button">Remove</button>
+          </div>
+        </div>
+      `;
+
+      const typeSelect = qs(".rq-type", row);
+      const textInput = qs(".rq-text", row);
+      const gapWrap = qs(".rq-gap", row);
+      const gapInput = qs(".rq-gap-answer", row);
+      const optionsWrap = qs(".rq-options", row);
+      const answerSelect = qs(".rq-answer", row);
+      const answerWrap = qs(".rq-answer-wrap", row);
+
+      const renderOptions = (type) => {
+        const optionList = readingQuestionDefaults[type] || readingQuestionDefaults.mcq;
+        if (type === "gap") {
+          optionsWrap.innerHTML = "";
+          if (answerWrap) answerWrap.style.display = "none";
+          if (gapWrap) gapWrap.style.display = "block";
+          if (gapInput) gapInput.value = question.answerText || "";
+          return;
+        }
+        if (gapWrap) gapWrap.style.display = "none";
+        if (answerWrap) answerWrap.style.display = "block";
+        optionsWrap.innerHTML = optionList
+          .map(
+            (opt, idx) => `
+              <div>
+                <label>Option ${idx + 1}</label>
+                <input class="rq-option" data-index="${idx}" type="text" value="${
+                  (question.options && question.options[idx]) || opt
+                }" ${type === "tfng" ? "disabled" : ""} />
+              </div>
+            `
+          )
+          .join("");
+        const options = qsa(".rq-option", optionsWrap).map((input) => input.value.trim());
+        answerSelect.innerHTML = options
+          .map((opt, idx) => `<option value="${idx}">${opt || `Option ${idx + 1}`}</option>`)
+          .join("");
+        answerSelect.value = Number.isInteger(question.answerIndex) ? String(question.answerIndex) : "0";
+        if (type !== "tfng") {
+          optionsWrap.addEventListener("input", () => {
+            const updated = qsa(".rq-option", optionsWrap).map((input) => input.value.trim());
+            const current = answerSelect.value;
+            answerSelect.innerHTML = updated
+              .map((opt, idx) => `<option value="${idx}">${opt || `Option ${idx + 1}`}</option>`)
+              .join("");
+            answerSelect.value = current || "0";
+          });
+        }
+      };
+
+      typeSelect.value = allowedTypes.includes(question.type) ? question.type : allowedTypes[0];
+      textInput.value = question.text || "";
+      renderOptions(typeSelect.value);
+
+      typeSelect.addEventListener("change", () => renderOptions(typeSelect.value));
+      qs(".rq-remove", row).addEventListener("click", () => row.remove());
+
+      listEl.appendChild(row);
+    };
+
+    const setupQuestionList = (listId, addBtnId, allowedTypes) => {
+      const listEl = qs(`#${listId}`);
+      const addBtn = qs(`#${addBtnId}`);
+      if (addBtn) {
+        addBtn.addEventListener("click", () => buildQuestionRow(listEl, allowedTypes));
+      }
+    };
+
+    setupQuestionList("part4-questions", "part4-add-question", ["mcq", "tfng"]);
+    setupQuestionList("part5-questions", "part5-add-question", ["gap", "mcq"]);
+  };
+
+  const resetReadingParts = () => {
+    if (!readingPartsWrap) return;
+    readingPartsWrap.innerHTML = "";
+    ensureReadingPartsUI();
+  };
+
+  const collectReadingQuestions = (listId) => {
+    const listEl = qs(`#${listId}`);
+    if (!listEl) return [];
+    return qsa(".question-row", listEl).map((row, idx) => {
+      const type = qs(".rq-type", row).value;
+      const text = qs(".rq-text", row).value.trim();
+      if (type === "gap") {
+        const answerText = (qs(".rq-gap-answer", row)?.value || "").trim();
+        return {
+          id: row.dataset.qid || `rq-${Date.now()}-${idx}`,
+          type,
+          text,
+          answerText
+        };
+      }
+      const options = qsa(".rq-option", row).map((input) => input.value.trim());
+      const answerIndex = Number(qs(".rq-answer", row).value || 0);
+      return {
+        id: row.dataset.qid || `rq-${Date.now()}-${idx}`,
+        type,
+        text,
+        options: options.length ? options : readingQuestionDefaults[type],
+        answerIndex
+      };
+    });
+  };
+
+  const collectReadingParts = () => {
+    if (!readingPartsWrap) return [];
+    const gaps = Array.from({ length: 6 }).map((_, idx) => ({
+      id: `p1-gap-${idx + 1}`,
+      answerText: (qs(`#part1-answers-${idx + 1}`)?.value || "").trim()
+    }));
+
+    const part2Choices = Array.from({ length: 8 }).map((_, idx) =>
+      (qs(`#part2-choices-${idx + 1}`)?.value || "").trim()
+    );
+    const part2Items = Array.from({ length: 8 }).map((_, idx) =>
+      (qs(`#part2-items-${idx + 1}`)?.value || "").trim()
+    );
+    const part2Answers = Array.from({ length: 8 }).map((_, idx) => {
+      const value = qs(`#part2-answers-${idx + 1}`)?.value;
+      return value === "" || value === undefined ? null : Number(value);
+    });
+
+    const part3Choices = Array.from({ length: 10 }).map((_, idx) =>
+      (qs(`#part3-choices-${idx + 1}`)?.value || "").trim()
+    );
+    const part3Items = Array.from({ length: 6 }).map((_, idx) =>
+      (qs(`#part3-items-${idx + 1}`)?.value || "").trim()
+    );
+    const part3Answers = Array.from({ length: 6 }).map((_, idx) => {
+      const value = qs(`#part3-answers-${idx + 1}`)?.value;
+      return value === "" || value === undefined ? null : Number(value);
+    });
+
+    const part4Questions = collectReadingQuestions("part4-questions");
+    const part5Questions = collectReadingQuestions("part5-questions");
+
+    return [
+      {
+        kind: "part",
+        part: 1,
+        title: "Part 1 - Gap Filling",
+        type: "gapset",
+        passage: (qs("#part1-passage")?.value || "").trim(),
+        gaps
+      },
+      {
+        kind: "part",
+        part: 2,
+        title: "Part 2 - Matching Information",
+        type: "matching",
+        prompt: "Match the information to the texts.",
+        choices: part2Choices,
+        items: part2Items,
+        answers: part2Answers
+      },
+      {
+        kind: "part",
+        part: 3,
+        title: "Part 3 - Matching Headings",
+        type: "matching",
+        prompt: "Match the heading to each paragraph.",
+        choices: part3Choices,
+        items: part3Items,
+        answers: part3Answers
+      },
+      {
+        kind: "part",
+        part: 4,
+        title: "Part 4 - Long Text",
+        type: "mixed",
+        passage: (qs("#part4-passage")?.value || "").trim(),
+        questions: part4Questions
+      },
+      {
+        kind: "part",
+        part: 5,
+        title: "Part 5 - Long Text",
+        type: "mixed",
+        passage: (qs("#part5-passage")?.value || "").trim(),
+        questions: part5Questions
+      }
+    ];
+  };
+
+  const setReadingParts = (parts = []) => {
+    if (!readingPartsWrap) return;
+    ensureReadingPartsUI();
+    const partMap = new Map(parts.map((p) => [p.part, p]));
+
+    const part1 = partMap.get(1);
+    if (part1) {
+      const passage = qs("#part1-passage");
+      if (passage) passage.value = part1.passage || "";
+      (part1.gaps || []).forEach((gap, idx) => {
+        const input = qs(`#part1-answers-${idx + 1}`);
+        if (input) input.value = gap.answerText || "";
+      });
+    }
+
+    const part2 = partMap.get(2);
+    if (part2) {
+      (part2.choices || []).forEach((choice, idx) => {
+        const input = qs(`#part2-choices-${idx + 1}`);
+        if (input) input.value = choice || "";
+      });
+      const part2ChoiceContainer = qs("#part2-choices");
+      if (part2ChoiceContainer) {
+        part2ChoiceContainer.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      (part2.items || []).forEach((item, idx) => {
+        const input = qs(`#part2-items-${idx + 1}`);
+        if (input) input.value = item || "";
+      });
+      (part2.answers || []).forEach((answer, idx) => {
+        const select = qs(`#part2-answers-${idx + 1}`);
+        if (select) select.value = answer === null || answer === undefined ? "" : String(answer);
+      });
+    }
+
+    const part3 = partMap.get(3);
+    if (part3) {
+      (part3.choices || []).forEach((choice, idx) => {
+        const input = qs(`#part3-choices-${idx + 1}`);
+        if (input) input.value = choice || "";
+      });
+      const part3ChoiceContainer = qs("#part3-choices");
+      if (part3ChoiceContainer) {
+        part3ChoiceContainer.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      (part3.items || []).forEach((item, idx) => {
+        const input = qs(`#part3-items-${idx + 1}`);
+        if (input) input.value = item || "";
+      });
+      (part3.answers || []).forEach((answer, idx) => {
+        const select = qs(`#part3-answers-${idx + 1}`);
+        if (select) select.value = answer === null || answer === undefined ? "" : String(answer);
+      });
+    }
+
+    const part4 = partMap.get(4);
+    if (part4) {
+      const passage = qs("#part4-passage");
+      if (passage) passage.value = part4.passage || "";
+      const listEl = qs("#part4-questions");
+      if (listEl) {
+        listEl.innerHTML = "";
+        (part4.questions || []).forEach((q) => {
+          ensureReadingPartsUI();
+          const listRef = qs("#part4-questions");
+          const allowed = ["mcq", "tfng"];
+          if (listRef) {
+            const row = listRef;
+            const buildRow = () => {
+              const question = q || {};
+              const qid = question.id || `rq-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
+              const item = document.createElement("div");
+              item.className = "list-item question-row";
+              item.dataset.qid = qid;
+              item.innerHTML = `
+                <div class="row">
+                  <div>
+                    <label>Type</label>
+                    <select class="rq-type">
+                      ${allowed
+                        .map((type) => {
+                          const label =
+                            type === "tfng" ? "True/False/Not Given" : type === "gap" ? "Gap Filling" : "MCQ";
+                          return `<option value="${type}">${label}</option>`;
+                        })
+                        .join("")}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Question text</label>
+                    <input class="rq-text" type="text" placeholder="Enter the question" />
+                  </div>
+                </div>
+                <div class="rq-options"></div>
+                <div class="rq-gap" style="display:none">
+                  <label>Correct answer</label>
+                  <input class="rq-gap-answer" type="text" placeholder="Enter correct word or phrase" />
+                </div>
+                <div class="row">
+                  <div class="rq-answer-wrap">
+                    <label>Correct answer</label>
+                    <select class="rq-answer"></select>
+                  </div>
+                  <div>
+                    <button class="btn btn-outline rq-remove" type="button">Remove</button>
+                  </div>
+                </div>
+              `;
+              row.appendChild(item);
+              const typeSelect = qs(".rq-type", item);
+              const textInput = qs(".rq-text", item);
+              const gapWrap = qs(".rq-gap", item);
+              const gapInput = qs(".rq-gap-answer", item);
+              const optionsWrap = qs(".rq-options", item);
+              const answerSelect = qs(".rq-answer", item);
+              const answerWrap = qs(".rq-answer-wrap", item);
+              const renderOptions = (type) => {
+                const optionList = readingQuestionDefaults[type] || readingQuestionDefaults.mcq;
+                if (type === "gap") {
+                  optionsWrap.innerHTML = "";
+                  if (answerWrap) answerWrap.style.display = "none";
+                  if (gapWrap) gapWrap.style.display = "block";
+                  if (gapInput) gapInput.value = question.answerText || "";
+                  return;
+                }
+                if (gapWrap) gapWrap.style.display = "none";
+                if (answerWrap) answerWrap.style.display = "block";
+                optionsWrap.innerHTML = optionList
+                  .map(
+                    (opt, idx) => `
+                      <div>
+                        <label>Option ${idx + 1}</label>
+                        <input class="rq-option" data-index="${idx}" type="text" value="${
+                          (question.options && question.options[idx]) || opt
+                        }" ${type === "tfng" ? "disabled" : ""} />
+                      </div>
+                    `
+                  )
+                  .join("");
+                const options = qsa(".rq-option", optionsWrap).map((input) => input.value.trim());
+                answerSelect.innerHTML = options
+                  .map((opt, idx) => `<option value="${idx}">${opt || `Option ${idx + 1}`}</option>`)
+                  .join("");
+                answerSelect.value = Number.isInteger(question.answerIndex) ? String(question.answerIndex) : "0";
+              };
+              typeSelect.value = allowed.includes(question.type) ? question.type : allowed[0];
+              textInput.value = question.text || "";
+              renderOptions(typeSelect.value);
+              typeSelect.addEventListener("change", () => renderOptions(typeSelect.value));
+              qs(".rq-remove", item).addEventListener("click", () => item.remove());
+            };
+            buildRow();
+          }
+        });
+      }
+    }
+
+    const part5 = partMap.get(5);
+    if (part5) {
+      const passage = qs("#part5-passage");
+      if (passage) passage.value = part5.passage || "";
+      const listEl = qs("#part5-questions");
+      if (listEl) {
+        listEl.innerHTML = "";
+        (part5.questions || []).forEach((q) => {
+          ensureReadingPartsUI();
+          const listRef = qs("#part5-questions");
+          const allowed = ["gap", "mcq"];
+          if (listRef) {
+            const row = listRef;
+            const question = q || {};
+            const qid = question.id || `rq-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`;
+            const item = document.createElement("div");
+            item.className = "list-item question-row";
+            item.dataset.qid = qid;
+            item.innerHTML = `
+              <div class="row">
+                <div>
+                  <label>Type</label>
+                  <select class="rq-type">
+                    ${allowed
+                      .map((type) => {
+                        const label =
+                          type === "tfng" ? "True/False/Not Given" : type === "gap" ? "Gap Filling" : "MCQ";
+                        return `<option value="${type}">${label}</option>`;
+                      })
+                      .join("")}
+                  </select>
+                </div>
+                <div>
+                  <label>Question text</label>
+                  <input class="rq-text" type="text" placeholder="Enter the question" />
+                </div>
+              </div>
+              <div class="rq-options"></div>
+              <div class="rq-gap" style="display:none">
+                <label>Correct answer</label>
+                <input class="rq-gap-answer" type="text" placeholder="Enter correct word or phrase" />
+              </div>
+              <div class="row">
+                <div class="rq-answer-wrap">
+                  <label>Correct answer</label>
+                  <select class="rq-answer"></select>
+                </div>
+                <div>
+                  <button class="btn btn-outline rq-remove" type="button">Remove</button>
+                </div>
+              </div>
+            `;
+            row.appendChild(item);
+            const typeSelect = qs(".rq-type", item);
+            const textInput = qs(".rq-text", item);
+            const gapWrap = qs(".rq-gap", item);
+            const gapInput = qs(".rq-gap-answer", item);
+            const optionsWrap = qs(".rq-options", item);
+            const answerSelect = qs(".rq-answer", item);
+            const answerWrap = qs(".rq-answer-wrap", item);
+            const renderOptions = (type) => {
+              const optionList = readingQuestionDefaults[type] || readingQuestionDefaults.mcq;
+              if (type === "gap") {
+                optionsWrap.innerHTML = "";
+                if (answerWrap) answerWrap.style.display = "none";
+                if (gapWrap) gapWrap.style.display = "block";
+                if (gapInput) gapInput.value = question.answerText || "";
+                return;
+              }
+              if (gapWrap) gapWrap.style.display = "none";
+              if (answerWrap) answerWrap.style.display = "block";
+              optionsWrap.innerHTML = optionList
+                .map(
+                  (opt, idx) => `
+                    <div>
+                      <label>Option ${idx + 1}</label>
+                      <input class="rq-option" data-index="${idx}" type="text" value="${
+                        (question.options && question.options[idx]) || opt
+                      }" ${type === "tfng" ? "disabled" : ""} />
+                    </div>
+                  `
+                )
+                .join("");
+              const options = qsa(".rq-option", optionsWrap).map((input) => input.value.trim());
+              answerSelect.innerHTML = options
+                .map((opt, idx) => `<option value="${idx}">${opt || `Option ${idx + 1}`}</option>`)
+                .join("");
+              answerSelect.value = Number.isInteger(question.answerIndex) ? String(question.answerIndex) : "0";
+            };
+            typeSelect.value = allowed.includes(question.type) ? question.type : allowed[0];
+            textInput.value = question.text || "";
+            renderOptions(typeSelect.value);
+            typeSelect.addEventListener("change", () => renderOptions(typeSelect.value));
+            qs(".rq-remove", item).addEventListener("click", () => item.remove());
+          }
+        });
+      }
+    }
+  };
+
+  const toggleEditors = () => {
+    const reading = isReadingSection();
+    if (readingPartsWrap) {
+      ensureReadingPartsUI();
+      readingPartsWrap.style.display = reading ? "block" : "none";
+    }
+    if (passageWrap) {
+      passageWrap.style.display = reading ? "none" : "block";
+    }
+    if (testTypeSelect) {
+      testTypeSelect.disabled = reading;
+      if (reading) testTypeSelect.value = "mcq";
+    }
+    if (reading) {
+      if (questionsSection) questionsSection.style.display = "none";
+    } else {
+      toggleQuestions();
+    }
   };
 
   const normalizeQuestion = (question, index) => {
@@ -936,7 +1851,11 @@ const initAdminPage = async () => {
 
   const toggleQuestions = () => {
     if (!questionsSection) return;
-    const isMcq = qs("#test-type").value === "mcq";
+    if (isReadingSection()) {
+      questionsSection.style.display = "none";
+      return;
+    }
+    const isMcq = (testTypeSelect || qs("#test-type")).value === "mcq";
     questionsSection.style.display = isMcq ? "block" : "none";
     if (isMcq && questionList && questionList.children.length === 0) {
       renderQuestionRow({ type: "mcq" });
@@ -968,12 +1887,19 @@ const initAdminPage = async () => {
         if (!test) return;
         qs("#test-id").value = test.id;
         qs("#test-title").value = test.title;
-        qs("#test-section").value = test.section;
-        qs("#test-type").value = test.type;
-        setEditorContent("test-passage", test.passage || test.prompt || "");
-        setQuestions(test.questions || []);
+        if (testSectionSelect) testSectionSelect.value = test.section;
+        if (testTypeSelect) testTypeSelect.value = test.type;
+        if (test.section === "reading" && Array.isArray(test.questions) && test.questions.some((q) => q.kind === "part")) {
+          resetReadingParts();
+          setReadingParts(test.questions);
+          setQuestions([]);
+          setEditorContent("test-passage", "");
+        } else {
+          setEditorContent("test-passage", test.passage || test.prompt || "");
+          setQuestions(test.questions || []);
+        }
         setEditorContent("test-rubric", test.rubric || "");
-        toggleQuestions();
+        toggleEditors();
       });
     });
 
@@ -991,7 +1917,12 @@ const initAdminPage = async () => {
       addQuestionBtn.addEventListener("click", () => renderQuestionRow({ type: "mcq" }));
     }
 
-    qs("#test-type").addEventListener("change", toggleQuestions);
+    if (testTypeSelect) {
+      testTypeSelect.addEventListener("change", toggleEditors);
+    }
+    if (testSectionSelect) {
+      testSectionSelect.addEventListener("change", toggleEditors);
+    }
 
     testForm.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -999,8 +1930,9 @@ const initAdminPage = async () => {
 
       const idRaw = qs("#test-id").value.trim();
       const title = qs("#test-title").value.trim();
-      const section = qs("#test-section").value;
-      const type = qs("#test-type").value;
+      const section = testSectionSelect ? testSectionSelect.value : qs("#test-section").value;
+      const isReading = section === "reading";
+      const type = isReading ? "mcq" : (testTypeSelect ? testTypeSelect.value : qs("#test-type").value);
       const passage = getEditorContent("test-passage");
       const rubric = getEditorContent("test-rubric");
 
@@ -1011,7 +1943,30 @@ const initAdminPage = async () => {
       }
 
       let questions = [];
-      if (type === "mcq") {
+      if (isReading) {
+        questions = collectReadingParts();
+        const part1 = questions[0];
+        const part2 = questions[1];
+        const part3 = questions[2];
+        const part4 = questions[3];
+        const part5 = questions[4];
+        const missing =
+          !part1?.passage ||
+          part1.gaps.some((g) => !g.answerText) ||
+          part2.choices.some((c) => !c) ||
+          part2.items.some((i) => !i) ||
+          part2.answers.some((a) => a === null || a === undefined) ||
+          part3.choices.some((c) => !c) ||
+          part3.items.some((i) => !i) ||
+          part3.answers.some((a) => a === null || a === undefined) ||
+          !part4?.passage ||
+          !part5?.passage;
+        if (missing) {
+          testMsg.textContent = "Please complete all Reading part fields and answers.";
+          testMsg.style.display = "block";
+          return;
+        }
+      } else if (type === "mcq") {
         questions = collectQuestions();
         if (!questions.length) {
           testMsg.textContent = "Please add at least one question.";
@@ -1034,9 +1989,9 @@ const initAdminPage = async () => {
         title,
         section,
         type,
-        passage: type === "mcq" ? passage : "",
-        prompt: type !== "mcq" ? passage : "",
-        questions: type === "mcq" ? questions : [],
+        passage: isReading ? "" : type === "mcq" ? passage : "",
+        prompt: isReading ? "" : type !== "mcq" ? passage : "",
+        questions: isReading ? questions : type === "mcq" ? questions : [],
         rubric
       };
 
@@ -1050,7 +2005,8 @@ const initAdminPage = async () => {
       setEditorContent("test-passage", "");
       setEditorContent("test-rubric", "");
       setQuestions([]);
-      toggleQuestions();
+      resetReadingParts();
+      toggleEditors();
       await renderTests();
       testMsg.textContent = "Saved.";
       testMsg.style.display = "block";
@@ -1061,14 +2017,16 @@ const initAdminPage = async () => {
       setEditorContent("test-passage", "");
       setEditorContent("test-rubric", "");
       setQuestions([]);
-      toggleQuestions();
+      resetReadingParts();
+      toggleEditors();
     });
   }
 
   initEditors();
   await renderTests();
   setQuestions([]);
-  toggleQuestions();
+  resetReadingParts();
+  toggleEditors();
 
   const vocabForm = qs("#vocab-form");
   const vocabList = qs("#vocab-admin-list");
@@ -1267,6 +2225,9 @@ const initPage = async () => {
       break;
     case "profile":
       await initProfilePage();
+      break;
+    case "admin-hub":
+      initAdminHubPage();
       break;
     case "admin":
       await initAdminPage();

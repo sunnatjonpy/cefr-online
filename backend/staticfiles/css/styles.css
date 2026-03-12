@@ -209,6 +209,10 @@ a {
   margin: 0;
 }
 
+.muted {
+  color: var(--muted);
+}
+
 .grid {
   display: grid;
   gap: var(--gap);
