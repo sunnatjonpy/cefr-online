@@ -1,4 +1,5 @@
-﻿from django.conf import settings
+﻿from ckeditor.fields import RichTextField
+from django.conf import settings
 from django.db import models
 
 
@@ -15,9 +16,9 @@ class MockTest(models.Model):
     section = models.CharField(max_length=20)
     title = models.CharField(max_length=200)
     type = models.CharField(max_length=20)
-    passage = models.TextField(blank=True)
-    prompt = models.TextField(blank=True)
-    rubric = models.TextField(blank=True)
+    passage = RichTextField(blank=True)
+    prompt = RichTextField(blank=True)
+    rubric = RichTextField(blank=True)
     questions = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -38,7 +39,7 @@ class VocabSet(models.Model):
 class GrammarLesson(models.Model):
     title = models.CharField(max_length=200)
     level = models.CharField(max_length=20)
-    content = models.TextField()
+    content = RichTextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

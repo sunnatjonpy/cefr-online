@@ -1,9 +1,13 @@
-﻿from django.contrib import admin
+﻿from django.conf import settings
+from django.conf.urls.static import static
+from django.contrib import admin
+from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include, path
 from django.views.generic import TemplateView
 from django.views.generic.base import RedirectView
 
 urlpatterns = [
+    path("ckeditor/", include("ckeditor_uploader.urls")),
     path("", RedirectView.as_view(url="/login", permanent=False)),
     path("login", TemplateView.as_view(template_name="index.html"), name="login"),
     path("signup", TemplateView.as_view(template_name="signup.html"), name="signup"),
@@ -27,6 +31,11 @@ urlpatterns = [
     path("grammar.html", RedirectView.as_view(url="/grammar", permanent=False)),
     path("tutorials.html", RedirectView.as_view(url="/tutorials", permanent=False)),
     path("profile.html", RedirectView.as_view(url="/profile", permanent=False)),
-    path('admin/', admin.site.urls),
-    path('api/', include('api.urls')),
+    path("admin/", admin.site.urls),
+    path("api/", include("api.urls")),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+    urlpatterns += staticfiles_urlpatterns()
