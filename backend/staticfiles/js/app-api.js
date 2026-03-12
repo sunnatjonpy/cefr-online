@@ -10,7 +10,7 @@ const SECTION_LABELS = {
 };
 
 const SECTION_TIMERS = {
-  reading: 20 * 60,
+  reading: 2 * 20,
   listening: 15 * 60,
   writing: 30 * 60
 };
