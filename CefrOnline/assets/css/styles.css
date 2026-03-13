@@ -260,6 +260,14 @@ body[data-theme="dark"] .btn-outline {
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 
+.switch.theme-toggle-mobile {
+  display: none;
+}
+
+.switch.theme-toggle-desktop {
+  display: inline-flex;
+}
+
 .switch input {
   opacity: 0;
   width: 0;
@@ -691,6 +699,12 @@ body[data-theme="dark"] .highlight-clear {
     display: inline-flex;
   }
   .theme-toggle-desktop {
+    display: none;
+  }
+  .switch.theme-toggle-mobile {
+    display: inline-flex;
+  }
+  .switch.theme-toggle-desktop {
     display: none;
   }
   .nav-toggle-wrap {
