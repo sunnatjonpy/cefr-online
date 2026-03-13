@@ -7,6 +7,7 @@
   attempts: "cefr_attempts",
   seedDone: "cefr_seed_done"
 };
+const THEME_KEY = "cefr_theme";
 
 const ADMIN_CREDENTIALS = {
   id: "admin-1",
@@ -25,6 +26,24 @@ const SECTION_LABELS = {
 
 const qs = (sel, root = document) => root.querySelector(sel);
 const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+const getPreferredTheme = () => {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved) return saved;
+  if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark";
+  }
+  return "light";
+};
+
+const applyTheme = (theme) => {
+  const next = theme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = next;
+  localStorage.setItem(THEME_KEY, next);
+  qsa(".theme-toggle-input").forEach((toggle) => {
+    toggle.checked = next === "dark";
+  });
+};
 
 const load = (key, fallback) => {
   const raw = localStorage.getItem(key);
@@ -636,6 +655,11 @@ const renderHeader = () => {
         <span>CEFR</span>
         <span class="nav-pill">online</span>
       </div>
+      <div class="nav-toggle-wrap">
+        <button class="nav-toggle" id="nav-toggle" type="button" aria-label="Toggle navigation">
+          <span></span>
+        </button>
+      </div>
       <div class="nav-links">
         <a href="dashboard.html">Dashboard</a>
         <a href="mock.html">Take a Mock</a>
@@ -646,6 +670,21 @@ const renderHeader = () => {
       </div>
       <div class="nav-actions">
         ${user ? `<span class="nav-pill">${user.name}</span>` : ""}
+        <label class="switch theme-toggle theme-toggle-desktop" aria-label="Toggle theme">
+          <input id="theme-toggle-desktop" class="theme-toggle-input" type="checkbox" />
+          <span class="slider">
+            <div class="star star_1"></div>
+            <div class="star star_2"></div>
+            <div class="star star_3"></div>
+            <svg viewBox="0 0 16 16" class="cloud_1 cloud">
+              <path
+                transform="matrix(.77976 0 0 .78395-299.99-418.63)"
+                fill="#fff"
+                d="m391.84 540.91c-.421-.329-.949-.524-1.523-.524-1.351 0-2.451 1.084-2.485 2.435-1.395.526-2.388 1.88-2.388 3.466 0 1.874 1.385 3.423 3.182 3.667v.034h12.73v-.006c1.775-.104 3.182-1.584 3.182-3.395 0-1.747-1.309-3.186-2.994-3.379.007-.106.011-.214.011-.322 0-2.707-2.271-4.901-5.072-4.901-2.073 0-3.856 1.202-4.643 2.925"
+              ></path>
+            </svg>
+          </span>
+        </label>
         ${user ? '<button class="btn btn-outline" id="logout-btn">Logout</button>' : '<a class="btn btn-outline" href="index.html">Login</a>'}
       </div>
     </nav>
@@ -653,6 +692,14 @@ const renderHeader = () => {
 
   const logoutBtn = qs("#logout-btn");
   if (logoutBtn) logoutBtn.addEventListener("click", logout);
+
+  applyTheme(getPreferredTheme());
+  qsa(".theme-toggle-input").forEach((input) => {
+    input.addEventListener("change", (event) => {
+      const next = event.target.checked ? "dark" : "light";
+      applyTheme(next);
+    });
+  });
 };
 const initLoginPage = () => {
   const user = getCurrentUser();
@@ -1241,6 +1288,7 @@ const initMockPage = () => {
 
 const initPage = () => {
   seedIfEmpty();
+  applyTheme(getPreferredTheme());
   renderHeader();
   const page = document.body.dataset.page;
 
