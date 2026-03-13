@@ -338,7 +338,20 @@ const initSectionPage = async () => {
       return;
     }
 
-    grid.innerHTML = tests
+    const sortedTests = tests
+      .slice()
+      .sort((a, b) => {
+        const aMatch = String(a.title || "").match(/\\btest\\s*(\\d+)/i);
+        const bMatch = String(b.title || "").match(/\\btest\\s*(\\d+)/i);
+        const aNum = aMatch ? Number(aMatch[1]) : null;
+        const bNum = bMatch ? Number(bMatch[1]) : null;
+        if (aNum !== null && bNum !== null) return aNum - bNum;
+        if (aNum !== null) return -1;
+        if (bNum !== null) return 1;
+        return String(a.title || "").localeCompare(String(b.title || ""));
+      });
+
+    grid.innerHTML = sortedTests
       .map(
         (t, idx) => `
         <a class="card" href="/test?section=${section}&id=${t.id}" style="--delay:${idx * 0.05}s">

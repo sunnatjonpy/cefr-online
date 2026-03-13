@@ -809,7 +809,18 @@ const initSectionPage = () => {
   if (header) header.textContent = `${SECTION_LABELS[section] || section} Tests`;
 
   const grid = qs("#tests-grid");
-  const tests = listTests(section);
+  const tests = listTests(section)
+    .slice()
+    .sort((a, b) => {
+      const aMatch = String(a.title || "").match(/\btest\s*(\d+)/i);
+      const bMatch = String(b.title || "").match(/\btest\s*(\d+)/i);
+      const aNum = aMatch ? Number(aMatch[1]) : null;
+      const bNum = bMatch ? Number(bMatch[1]) : null;
+      if (aNum !== null && bNum !== null) return aNum - bNum;
+      if (aNum !== null) return -1;
+      if (bNum !== null) return 1;
+      return String(a.title || "").localeCompare(String(b.title || ""));
+    });
   if (grid) {
     if (tests.length === 0) {
       grid.innerHTML = '<div class="notice">No tests available yet. Ask an admin to add more.</div>';
