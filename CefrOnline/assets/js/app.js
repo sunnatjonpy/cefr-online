@@ -633,8 +633,8 @@ const renderHeader = () => {
   container.innerHTML = `
     <nav class="nav">
       <div class="nav-brand">
-        <span>CEFR Mock Taker</span>
-        <span class="nav-pill">v1</span>
+        <span>CEFR</span>
+        <span class="nav-pill">online</span>
       </div>
       <div class="nav-links">
         <a href="dashboard.html">Dashboard</a>

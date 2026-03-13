@@ -1,6 +1,7 @@
 ﻿const API_BASE = window.CEFR_API_BASE || "/api";
 const TOKEN_KEY = "cefr_token";
 const USER_KEY = "cefr_current_user";
+const THEME_KEY = "cefr_theme";
 
 const SECTION_LABELS = {
   reading: "Reading",
@@ -18,6 +19,25 @@ const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 const qs = (sel, root = document) => root.querySelector(sel);
 const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+const getPreferredTheme = () => {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved) return saved;
+  if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark";
+  }
+  return "light";
+};
+
+const applyTheme = (theme) => {
+  const next = theme === "dark" ? "dark" : "light";
+  document.body.dataset.theme = next;
+  localStorage.setItem(THEME_KEY, next);
+  const toggle = qs("#theme-toggle");
+  if (toggle) {
+    toggle.setAttribute("aria-pressed", next === "dark" ? "true" : "false");
+  }
+};
 
 const getToken = () => localStorage.getItem(TOKEN_KEY);
 
@@ -129,8 +149,8 @@ const renderHeader = () => {
     <nav class="nav" id="main-nav">
       <div class="nav-left">
         <div class="nav-brand">
-          <span>CEFR Mock Taker</span>
-          <span class="nav-pill">v1</span>
+          <span>CEFR</span>
+          <span class="nav-pill">online</span>
         </div>
         <button class="nav-toggle" id="nav-toggle" type="button" aria-label="Toggle navigation">
           <span></span>
@@ -140,13 +160,17 @@ const renderHeader = () => {
         <div class="nav-links">
           <a href="/dashboard">Dashboard</a>
           <a href="/mock">Take a Mock</a>
-          <a href="/vocabulary">Vocabulary</a>
-          <a href="/grammar">Grammar</a>
           <a href="/tutorials">Tutorials</a>
           ${isAdmin ? '<a href="/admin-panel">Admin</a>' : ""}
         </div>
         <div class="nav-actions">
           ${user ? `<span class="nav-pill">${user.name}</span>` : ""}
+          <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false" aria-label="Toggle theme">
+            <span class="theme-switch" aria-hidden="true">
+              <span class="theme-icon theme-sun" aria-hidden="true">☀</span>
+              <span class="theme-icon theme-moon" aria-hidden="true">☾</span>
+            </span>
+          </button>
           ${user ? '<button class="btn btn-outline" id="logout-btn">Logout</button>' : '<a class="btn btn-outline" href="/login">Login</a>'}
         </div>
       </div>
@@ -161,6 +185,15 @@ const renderHeader = () => {
   if (toggle && nav) {
     toggle.addEventListener("click", () => {
       nav.classList.toggle("is-open");
+    });
+  }
+
+  applyTheme(getPreferredTheme());
+  const themeToggle = qs("#theme-toggle");
+  if (themeToggle) {
+    themeToggle.addEventListener("click", () => {
+      const next = document.body.dataset.theme === "dark" ? "light" : "dark";
+      applyTheme(next);
     });
   }
 };
@@ -2192,6 +2225,7 @@ const initMockPage = () => {
 };
 
 const initPage = async () => {
+  applyTheme(getPreferredTheme());
   renderHeader();
   const page = document.body.dataset.page;
 
