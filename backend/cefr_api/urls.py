@@ -19,6 +19,7 @@ urlpatterns = [
     path("grammar", TemplateView.as_view(template_name="grammar.html"), name="grammar"),
     path("tutorials", TemplateView.as_view(template_name="tutorials.html"), name="tutorials"),
     path("profile", TemplateView.as_view(template_name="profile.html"), name="profile"),
+    path("score", TemplateView.as_view(template_name="score.html"), name="score"),
     path("admin-panel", TemplateView.as_view(template_name="admin.html"), name="admin_panel"),
     path("admin-users", TemplateView.as_view(template_name="admin-users.html"), name="admin_users"),
     path("admin-tests", TemplateView.as_view(template_name="admin-tests.html"), name="admin_tests"),
@@ -39,6 +40,7 @@ urlpatterns = [
     path("grammar.html", RedirectView.as_view(url="/grammar", permanent=False)),
     path("tutorials.html", RedirectView.as_view(url="/tutorials", permanent=False)),
     path("profile.html", RedirectView.as_view(url="/profile", permanent=False)),
+    path("score.html", RedirectView.as_view(url="/score", permanent=False)),
     path("admin/", admin.site.urls),
     path("api/", include("api.urls")),
 ]

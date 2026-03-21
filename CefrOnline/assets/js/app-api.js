@@ -1,6 +1,9 @@
 ﻿const API_BASE = window.CEFR_API_BASE || "/api";
 const TOKEN_KEY = "cefr_token";
 const USER_KEY = "cefr_current_user";
+const READING_STATE_PREFIX = "cefr_reading_state_";
+const SCORE_KEY = "cefr_last_score";
+const TIMER_PREFIX = "cefr_timer_";
 const THEME_KEY = "cefr_theme";
 
 const SECTION_LABELS = {
@@ -58,6 +61,24 @@ const setAuth = (user, token) => {
 const clearAuth = () => {
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(TOKEN_KEY);
+};
+
+const loadJson = (key, fallback = null) => {
+  const raw = localStorage.getItem(key);
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+};
+
+const saveJson = (key, value) => {
+  localStorage.setItem(key, JSON.stringify(value));
+};
+
+const removeJson = (key) => {
+  localStorage.removeItem(key);
 };
 
 const apiRequest = async (path, options = {}) => {
@@ -403,6 +424,28 @@ const initTestPage = async () => {
     let submitted = false;
     const hasReadingParts =
       test.section === "reading" && Array.isArray(test.questions) && test.questions.some((q) => q && q.kind === "part");
+    const readingPartsTotal = 5;
+    const activeReadingPart = hasReadingParts
+      ? Math.min(
+          Math.max(Number.parseInt(params.get("part") || "1", 10) || 1, 1),
+          readingPartsTotal
+        )
+      : null;
+    const readingStateKey = hasReadingParts ? `${READING_STATE_PREFIX}${test.id}` : null;
+    let readingState = hasReadingParts ? loadJson(readingStateKey, { parts: {} }) : null;
+    if (hasReadingParts && (!readingState || typeof readingState !== "object")) {
+      readingState = { parts: {} };
+    }
+    const timerKey = test?.id ? `${TIMER_PREFIX}${test.section}_${test.id}` : null;
+    const clearTimerState = () => {
+      if (!timerKey) return;
+      removeJson(timerKey);
+    };
+
+    const saveReadingState = () => {
+      if (!hasReadingParts || !readingStateKey) return;
+      saveJson(readingStateKey, readingState);
+    };
 
     const finalizeSubmission = (scoreText, auto) => {
       msg.textContent = auto ? `Time is up. Your score is ${scoreText}.` : `Saved! Your score is ${scoreText}.`;
@@ -426,13 +469,8 @@ const initTestPage = async () => {
       });
     };
 
-    const renderReadingPartsForm = (parts) => {
+    const renderReadingPartsForm = (parts, activePart, totalParts, testId) => {
       const partMap = new Map((parts || []).map((p) => [p.part, p]));
-      const part1 = partMap.get(1);
-      const part2 = partMap.get(2);
-      const part3 = partMap.get(3);
-      const part4 = partMap.get(4);
-      const part5 = partMap.get(5);
 
       const renderGapSet = (part) => {
         if (!part) return "";
@@ -496,7 +534,7 @@ const initTestPage = async () => {
         `;
       };
 
-      const renderMixed = (part, prefix, titleFallback) => {
+      const renderMixed = (part, prefix, titleFallback, split = false) => {
         if (!part) return "";
         const questions = part.questions || [];
         const renderQuestion = (q, idx) => {
@@ -532,24 +570,183 @@ const initTestPage = async () => {
           `;
         };
         return `
-          <div class="list-item reading-part">
+          <div class="list-item reading-part${split ? " reading-part-split" : ""}">
             <h3>${part.title || titleFallback}</h3>
-            ${part.passage ? `<div class="rich-text reading-passage">${part.passage}</div>` : ""}
-            <div class="list">
-              ${questions.map((q, idx) => renderQuestion(q, idx)).join("")}
-            </div>
+            ${
+              split
+                ? `
+                  <div class="reading-part-columns">
+                    <div class="reading-part-col reading-part-text">
+                      ${part.passage ? `<div class="rich-text reading-passage">${part.passage}</div>` : ""}
+                    </div>
+                    <div class="reading-part-col reading-part-questions">
+                      <div class="list">
+                        ${questions.map((q, idx) => renderQuestion(q, idx)).join("")}
+                      </div>
+                    </div>
+                  </div>
+                `
+                : `
+                  ${part.passage ? `<div class="rich-text reading-passage">${part.passage}</div>` : ""}
+                  <div class="list">
+                    ${questions.map((q, idx) => renderQuestion(q, idx)).join("")}
+                  </div>
+                `
+            }
           </div>
         `;
       };
 
+      const renderPartNav = () => {
+        const total = totalParts || 6;
+        return `
+          <div class="reading-part-nav">
+            ${Array.from({ length: total }).map((_, idx) => {
+              const part = idx + 1;
+              const exists = partMap.has(part);
+              const href = `/test?section=reading&id=${testId}&part=${part}`;
+              const classes = [
+                "reading-part-link",
+                part === activePart ? "is-active" : "",
+                !exists ? "is-disabled" : ""
+              ]
+                .filter(Boolean)
+                .join(" ");
+              return `<a class="${classes}" href="${href}">Part ${part}</a>`;
+            }).join("")}
+          </div>
+        `;
+      };
+
+      const renderSelectedPart = () => {
+        const selected = partMap.get(activePart);
+        if (!selected) {
+          return `<div class="notice">Part ${activePart} is not available for this test yet.</div>`;
+        }
+        switch (selected.part) {
+          case 1:
+            return renderGapSet(selected);
+          case 2:
+            return renderMatching(selected, "p2", "Part 2 - Matching Information");
+          case 3:
+            return renderMatching(selected, "p3", "Part 3 - Matching Headings");
+          case 4:
+            return renderMixed(selected, "p4", "Part 4 - Long Text", true);
+          case 5:
+            return renderMixed(selected, "p5", "Part 5 - Long Text", true);
+          case 6:
+            return renderMixed(selected, "p6", "Part 6 - Long Text", true);
+          default:
+            return "";
+        }
+      };
+
+      const selected = partMap.get(activePart);
       return `
-        ${renderGapSet(part1)}
-        ${renderMatching(part2, "p2", "Part 2 - Matching Information")}
-        ${renderMatching(part3, "p3", "Part 3 - Matching Headings")}
-        ${renderMixed(part4, "p4", "Part 4 - Long Text")}
-        ${renderMixed(part5, "p5", "Part 5 - Long Text")}
-        <button class="btn btn-primary" type="submit">Submit Answers</button>
+        ${renderSelectedPart()}
+        ${selected && activePart === 5 ? '<button class="btn btn-primary" type="submit">Submit Answers</button>' : ""}
+        ${renderPartNav()}
       `;
+    };
+
+    const getReadingPartMap = () => new Map((test.questions || []).map((p) => [p.part, p]));
+    const getReadingPrefix = (part) => {
+      if (part === 2) return "p2";
+      if (part === 3) return "p3";
+      if (part === 4) return "p4";
+      if (part === 5) return "p5";
+      return `p${part}`;
+    };
+    const getPartState = (part) => (readingState && readingState.parts ? readingState.parts[part] : null) || null;
+    const setPartState = (part, data) => {
+      if (!readingState) return;
+      if (!readingState.parts) readingState.parts = {};
+      readingState.parts[part] = data;
+      saveReadingState();
+    };
+
+    const collectPartState = (part) => {
+      const partMap = getReadingPartMap();
+      const selected = partMap.get(part);
+      if (!selected) return null;
+      const prefix = getReadingPrefix(part);
+
+      if (selected.part === 1) {
+        const gaps = {};
+        (selected.gaps || []).forEach((gap) => {
+          const input = form.querySelector(`input[name='${gap.id}']`);
+          gaps[gap.id] = input ? input.value.trim() : "";
+        });
+        return { gaps };
+      }
+
+      if (selected.part === 2 || selected.part === 3) {
+        const matches = [];
+        (selected.items || []).forEach((_, idx) => {
+          const select = form.querySelector(`select[name='${prefix}-${idx}']`);
+          const value = select ? select.value : "";
+          matches[idx] = value === "" ? null : Number(value);
+        });
+        return { matches };
+      }
+
+      const answers = {};
+      (selected.questions || []).forEach((q, idx) => {
+        const qid = q.id || `${prefix}-${idx}`;
+        const type = q.type || "mcq";
+        if (type === "gap") {
+          const input = form.querySelector(`input[name='${qid}']`);
+          answers[qid] = { type, response: input ? input.value.trim() : "" };
+          return;
+        }
+        const selectedInput = form.querySelector(`input[name='${qid}']:checked`);
+        answers[qid] = { type, selectedIndex: selectedInput ? Number(selectedInput.value) : null };
+      });
+      return { answers };
+    };
+
+    const hydratePartInputs = (part) => {
+      const partMap = getReadingPartMap();
+      const selected = partMap.get(part);
+      if (!selected) return;
+      const state = getPartState(part);
+      if (!state) return;
+      const prefix = getReadingPrefix(part);
+
+      if (selected.part === 1 && state.gaps) {
+        Object.entries(state.gaps).forEach(([gapId, value]) => {
+          const input = form.querySelector(`input[name='${gapId}']`);
+          if (input) input.value = value || "";
+        });
+        return;
+      }
+
+      if ((selected.part === 2 || selected.part === 3) && Array.isArray(state.matches)) {
+        state.matches.forEach((value, idx) => {
+          const select = form.querySelector(`select[name='${prefix}-${idx}']`);
+          if (select) select.value = value === null || value === undefined ? "" : String(value);
+        });
+        return;
+      }
+
+      if (state.answers) {
+        Object.entries(state.answers).forEach(([qid, answer]) => {
+          if (!answer) return;
+          if (answer.type === "gap") {
+            const input = form.querySelector(`input[name='${qid}']`);
+            if (input) input.value = answer.response || "";
+            return;
+          }
+          const radio = form.querySelector(`input[name='${qid}'][value='${answer.selectedIndex}']`);
+          if (radio) radio.checked = true;
+        });
+      }
+    };
+
+    const persistActivePart = () => {
+      if (!hasReadingParts) return;
+      const data = collectPartState(activeReadingPart || 1);
+      if (data) setPartState(activeReadingPart || 1, data);
     };
 
     const applyHighlights = () => {
@@ -634,6 +831,7 @@ const initTestPage = async () => {
         }
       });
 
+      clearTimerState();
       applyHighlights();
       submitted = true;
       finalizeSubmission(score, auto);
@@ -641,113 +839,151 @@ const initTestPage = async () => {
 
     const submitReadingParts = async (auto = false) => {
       if (submitted) return;
-      const answers = [];
+      const partMap = getReadingPartMap();
+      const activePart = activeReadingPart || 1;
+      const selected = partMap.get(activePart);
+
+      if (!selected) {
+        msg.textContent = `Part ${activePart} is not available for this test.`;
+        msg.style.display = "block";
+        return;
+      }
+
+      persistActivePart();
+
+      if (activePart !== 5 && !auto) {
+        msg.textContent = "Submit is available on Part 5 to include all parts.";
+        msg.style.display = "block";
+        return;
+      }
+
       const results = {};
-      let correct = 0;
-      let total = 0;
+      const partBreakdown = [];
+      let totalCorrect = 0;
+      let totalQuestions = 0;
       let complete = true;
 
-      const partMap = new Map((test.questions || []).map((p) => [p.part, p]));
-
-      const part1 = partMap.get(1);
-      if (part1 && Array.isArray(part1.gaps)) {
-        part1.gaps.forEach((gap) => {
+      const scoreGapSet = (part, partState) => {
+        let correct = 0;
+        let total = 0;
+        (part.gaps || []).forEach((gap) => {
           total += 1;
-          const input = form.querySelector(`input[name='${gap.id}']`);
-          const response = input ? input.value.trim() : "";
+          const response = (partState?.gaps?.[gap.id] || "").trim();
           if (!response) {
             complete = false;
             if (!auto) return;
           }
-          answers.push({ questionId: gap.id, response });
           const expected = (gap.answerText || "").trim().toLowerCase();
           const isCorrect = response.toLowerCase() === expected;
           results[gap.id] = isCorrect;
           if (isCorrect) correct += 1;
         });
-      }
+        return { correct, total };
+      };
 
-      const handleMatching = (part, prefix) => {
-        if (!part || !Array.isArray(part.items)) return;
+      const scoreMatching = (part, partState, prefix) => {
+        let correct = 0;
+        let total = 0;
         const expectedAnswers = Array.isArray(part.answers) ? part.answers : [];
-        part.items.forEach((_, idx) => {
+        (part.items || []).forEach((_, idx) => {
           total += 1;
-          const select = form.querySelector(`select[name='${prefix}-${idx}']`);
-          const value = select ? select.value : "";
-          if (value === "") {
+          const selectedIndex = Array.isArray(partState?.matches) ? partState.matches[idx] : null;
+          if (selectedIndex === null || selectedIndex === undefined) {
             complete = false;
             if (!auto) return;
           }
-          const selectedIndex = value === "" ? null : Number(value);
-          answers.push({ questionId: `${prefix}-${idx}`, selectedIndex });
           const isCorrect = selectedIndex === expectedAnswers[idx];
           results[`${prefix}-${idx}`] = isCorrect;
           if (isCorrect) correct += 1;
         });
+        return { correct, total };
       };
 
-      handleMatching(partMap.get(2), "p2");
-      handleMatching(partMap.get(3), "p3");
-
-      const handleMixed = (part, prefix) => {
-        if (!part || !Array.isArray(part.questions)) return;
-        part.questions.forEach((q, idx) => {
+      const scoreMixed = (part, partState, prefix) => {
+        let correct = 0;
+        let total = 0;
+        (part.questions || []).forEach((q, idx) => {
           const type = q.type || "mcq";
           const qid = q.id || `${prefix}-${idx}`;
           total += 1;
           if (type === "gap") {
-            const input = form.querySelector(`input[name='${qid}']`);
-            const response = input ? input.value.trim() : "";
+            const response = (partState?.answers?.[qid]?.response || "").trim();
             if (!response) {
               complete = false;
               if (!auto) return;
             }
-            answers.push({ questionId: qid, response });
             const expected = (q.answerText || "").trim().toLowerCase();
             const isCorrect = response.toLowerCase() === expected;
             results[qid] = isCorrect;
             if (isCorrect) correct += 1;
             return;
           }
-          const selected = form.querySelector(`input[name='${qid}']:checked`);
-          if (!selected) {
+          const selectedIndex = partState?.answers?.[qid]?.selectedIndex;
+          if (selectedIndex === null || selectedIndex === undefined) {
             complete = false;
             if (!auto) return;
-            answers.push({ questionId: qid, selectedIndex: null });
             results[qid] = false;
             return;
           }
-          const selectedIndex = Number(selected.value);
-          answers.push({ questionId: qid, selectedIndex });
-          const isCorrect = selectedIndex === q.answerIndex;
+          const isCorrect = Number(selectedIndex) === q.answerIndex;
           results[qid] = isCorrect;
           if (isCorrect) correct += 1;
         });
+        return { correct, total };
       };
 
-      handleMixed(partMap.get(4), "p4");
-      handleMixed(partMap.get(5), "p5");
+      for (let part = 1; part <= 5; part += 1) {
+        const partDef = partMap.get(part);
+        if (!partDef) continue;
+        const partState = getPartState(part);
+        let scored = { correct: 0, total: 0 };
+        if (part === 1) scored = scoreGapSet(partDef, partState);
+        else if (part === 2) scored = scoreMatching(partDef, partState, "p2");
+        else if (part === 3) scored = scoreMatching(partDef, partState, "p3");
+        else if (part === 4) scored = scoreMixed(partDef, partState, "p4");
+        else if (part === 5) scored = scoreMixed(partDef, partState, "p5");
+        partBreakdown.push({ part, correct: scored.correct, total: scored.total });
+        totalCorrect += scored.correct;
+        totalQuestions += scored.total;
+      }
 
       if (!complete && !auto) {
-        msg.textContent = "Please answer all questions.";
+        msg.textContent = "Please answer all questions in Parts 1-5.";
         msg.style.display = "block";
         return;
       }
 
-      const score = `${correct} / ${total}`;
-      await apiRequest("/attempts", {
+      const score = `${totalCorrect} / ${totalQuestions}`;
+      const attempt = await apiRequest("/attempts", {
         method: "POST",
         body: {
           testId: test.id,
           section: test.section,
           type: test.type,
           score,
-          answers
+          answers: {
+            parts: readingState?.parts || {},
+            breakdown: partBreakdown
+          }
         }
       });
 
+      clearTimerState();
+      const scoreSummary = {
+        attemptId: attempt.id,
+        testId: test.id,
+        title: test.title,
+        section: test.section,
+        totalCorrect,
+        totalQuestions,
+        parts: partBreakdown,
+        createdAt: attempt.createdAt
+      };
+      saveJson(SCORE_KEY, scoreSummary);
+
       applyReadingHighlights(results);
       submitted = true;
+      window.location.href = `/score?attempt=${attempt.id}`;
       finalizeSubmission(score, auto);
     };
 
@@ -767,6 +1003,7 @@ const initTestPage = async () => {
         }
       });
 
+      clearTimerState();
       submitted = true;
       msg.textContent = auto ? "Time is up. Your response has been recorded." : "Saved! Your response has been recorded.";
       msg.style.display = "block";
@@ -776,7 +1013,24 @@ const initTestPage = async () => {
     };
 
     if (hasReadingParts) {
-      form.innerHTML = renderReadingPartsForm(test.questions || []);
+      form.innerHTML = renderReadingPartsForm(
+        test.questions || [],
+        activeReadingPart,
+        readingPartsTotal,
+        test.id
+      );
+      hydratePartInputs(activeReadingPart || 1);
+      form.addEventListener("input", persistActivePart);
+      form.addEventListener("change", persistActivePart);
+      const partNav = qs(".reading-part-nav", form);
+      if (partNav) {
+        partNav.addEventListener("click", (event) => {
+          const link = event.target.closest(".reading-part-link");
+          if (!link) return;
+          persistActivePart();
+        });
+      }
+      window.addEventListener("beforeunload", persistActivePart);
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         msg.style.display = "none";
@@ -849,16 +1103,24 @@ const initTestPage = async () => {
     const timerEl = qs("#section-timer");
     const duration = SECTION_TIMERS[test.section];
     if (timerEl && duration) {
-      let remaining = duration;
+      const now = Date.now();
+      const stored = timerKey ? loadJson(timerKey, null) : null;
+      let endTime = stored && stored.end ? Number(stored.end) : 0;
+      if (!endTime || endTime <= now) {
+        endTime = now + duration * 1000;
+        if (timerKey) saveJson(timerKey, { end: endTime });
+      }
       const updateTimer = () => {
+        const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
         const minutes = Math.floor(remaining / 60);
         const seconds = remaining % 60;
         timerEl.textContent = `Time left: ${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+        return remaining;
       };
       timerEl.style.display = "inline-flex";
-      updateTimer();
+      let remaining = updateTimer();
       const timerId = setInterval(async () => {
-        remaining -= 1;
+        remaining = updateTimer();
         if (remaining <= 0) {
           clearInterval(timerId);
           if (hasReadingParts) {
@@ -868,9 +1130,8 @@ const initTestPage = async () => {
           } else {
             await submitWriting(true);
           }
-          return;
+          clearTimerState();
         }
-        updateTimer();
       }, 1000);
     }
 
@@ -1009,6 +1270,54 @@ const initProfilePage = async () => {
   } catch (err) {
     list.innerHTML = `<div class="notice">${err.message || "Failed to load attempts."}</div>`;
   }
+};
+
+const initScorePage = async () => {
+  const user = requireAuth();
+  if (!user) return;
+
+  const container = qs("#score-container");
+  if (!container) return;
+
+  const score = loadJson(SCORE_KEY, null);
+  if (!score) {
+    container.innerHTML = '<div class="notice">No score found yet. Complete a test to see results.</div>';
+    return;
+  }
+
+  const totalPercent = score.totalQuestions
+    ? Math.round((score.totalCorrect / score.totalQuestions) * 100)
+    : 0;
+  const parts = Array.isArray(score.parts) ? score.parts : [];
+
+  container.innerHTML = `
+    <div class="hero">
+      <h1>Score Summary</h1>
+      <p>${score.title || "Mock Test"} · ${SECTION_LABELS[score.section] || score.section}</p>
+      <div class="score-total">
+        <div class="score-big">${score.totalCorrect} / ${score.totalQuestions}</div>
+        <div class="score-sub">${totalPercent}% overall</div>
+      </div>
+    </div>
+    <div class="score-breakdown">
+      ${parts
+        .map((p) => {
+          const percent = p.total ? Math.round((p.correct / p.total) * 100) : 0;
+          return `
+            <div class="score-row">
+              <div class="score-label">Part ${p.part}</div>
+              <div class="score-bar"><span style="width:${percent}%"></span></div>
+              <div class="score-value">${p.correct}/${p.total}</div>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+    <div class="score-actions">
+      <a class="btn btn-outline" href="/mock">Back to Mocks</a>
+      <a class="btn btn-primary" href="/dashboard">Dashboard</a>
+    </div>
+  `;
 };
 const initAdminHubPage = () => {
   const user = requireAdmin();
@@ -2296,6 +2605,9 @@ const initPage = async () => {
       break;
     case "profile":
       await initProfilePage();
+      break;
+    case "score":
+      await initScorePage();
       break;
     case "admin-hub":
       initAdminHubPage();
