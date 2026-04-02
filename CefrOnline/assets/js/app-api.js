@@ -81,6 +81,42 @@ const removeJson = (key) => {
   localStorage.removeItem(key);
 };
 
+const confirmModal = ({ title, message, confirmText = "Yes", cancelText = "No" }) =>
+  new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML = `
+      <div class="modal-card" role="dialog" aria-modal="true">
+        <h3>${title}</h3>
+        <p>${message}</p>
+        <div class="modal-actions">
+          <button class="btn btn-outline" data-cancel="true">${cancelText}</button>
+          <button class="btn btn-primary" data-confirm="true">${confirmText}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+    document.body.classList.add("modal-open");
+
+    const cleanup = (result) => {
+      document.body.classList.remove("modal-open");
+      backdrop.remove();
+      resolve(result);
+    };
+
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) cleanup(false);
+    });
+
+    backdrop.querySelector("[data-cancel]").addEventListener("click", () => cleanup(false));
+    backdrop.querySelector("[data-confirm]").addEventListener("click", () => cleanup(true));
+
+    const onKey = (e) => {
+      if (e.key === "Escape") cleanup(false);
+    };
+    document.addEventListener("keydown", onKey, { once: true });
+  });
+
 const apiRequest = async (path, options = {}) => {
   const method = options.method || "GET";
   const token = getToken();
@@ -404,7 +440,7 @@ const initTestPage = async () => {
     container.innerHTML = `
       <div class="hero">
         <h1>${test.title}</h1>
-        <p>${SECTION_LABELS[test.section]} mock test - ${test.type === "mcq" ? "MCQ" : "Prompt"}</p>
+        ${test.section === "reading" ? "" : `<p>${SECTION_LABELS[test.section]} mock test - ${test.type === "mcq" ? "MCQ" : "Prompt"}</p>`}
         <div class="timer" id="section-timer" style="display:none"></div>
       </div>
       ${
@@ -432,6 +468,15 @@ const initTestPage = async () => {
         )
       : null;
     const readingStateKey = hasReadingParts ? `${READING_STATE_PREFIX}${test.id}` : null;
+    const sameTestReferrer =
+      typeof document !== "undefined" &&
+      document.referrer &&
+      document.referrer.includes("/test") &&
+      document.referrer.includes(`id=${test.id}`);
+    const keepReadingState = hasReadingParts && sameTestReferrer;
+    if (hasReadingParts && !keepReadingState && readingStateKey) {
+      removeJson(readingStateKey);
+    }
     let readingState = hasReadingParts ? loadJson(readingStateKey, { parts: {} }) : null;
     if (hasReadingParts && (!readingState || typeof readingState !== "object")) {
       readingState = { parts: {} };
@@ -440,6 +485,13 @@ const initTestPage = async () => {
     const clearTimerState = () => {
       if (!timerKey) return;
       removeJson(timerKey);
+    };
+    const clearReadingState = () => {
+      if (!readingStateKey) return;
+      removeJson(readingStateKey);
+      if (readingState) {
+        readingState.parts = {};
+      }
     };
 
     const saveReadingState = () => {
@@ -785,17 +837,12 @@ const initTestPage = async () => {
       if (submitted) return;
       const answers = [];
       let correct = 0;
-      let complete = true;
 
       test.questions.forEach((q) => {
         const type = q.type || "mcq";
         if (type === "gap") {
           const input = form.querySelector(`input[name='${q.id}']`);
           const response = input ? input.value.trim() : "";
-          if (!response) {
-            complete = false;
-            if (!auto) return;
-          }
           answers.push({ questionId: q.id, response });
           const expected = (q.answerText || "").trim().toLowerCase();
           if (response.toLowerCase() === expected) correct += 1;
@@ -803,8 +850,6 @@ const initTestPage = async () => {
         }
         const selected = form.querySelector(`input[name='${q.id}']:checked`);
         if (!selected) {
-          complete = false;
-          if (!auto) return;
           answers.push({ questionId: q.id, selectedIndex: null });
           return;
         }
@@ -812,12 +857,6 @@ const initTestPage = async () => {
         answers.push({ questionId: q.id, selectedIndex });
         if (selectedIndex === q.answerIndex) correct += 1;
       });
-
-      if (!complete && !auto) {
-        msg.textContent = "Please answer all questions.";
-        msg.style.display = "block";
-        return;
-      }
 
       const score = `${correct} / ${test.questions.length}`;
       await apiRequest("/attempts", {
@@ -832,6 +871,7 @@ const initTestPage = async () => {
       });
 
       clearTimerState();
+      clearReadingState();
       applyHighlights();
       submitted = true;
       finalizeSubmission(score, auto);
@@ -861,7 +901,6 @@ const initTestPage = async () => {
       const partBreakdown = [];
       let totalCorrect = 0;
       let totalQuestions = 0;
-      let complete = true;
 
       const scoreGapSet = (part, partState) => {
         let correct = 0;
@@ -869,10 +908,6 @@ const initTestPage = async () => {
         (part.gaps || []).forEach((gap) => {
           total += 1;
           const response = (partState?.gaps?.[gap.id] || "").trim();
-          if (!response) {
-            complete = false;
-            if (!auto) return;
-          }
           const expected = (gap.answerText || "").trim().toLowerCase();
           const isCorrect = response.toLowerCase() === expected;
           results[gap.id] = isCorrect;
@@ -888,10 +923,6 @@ const initTestPage = async () => {
         (part.items || []).forEach((_, idx) => {
           total += 1;
           const selectedIndex = Array.isArray(partState?.matches) ? partState.matches[idx] : null;
-          if (selectedIndex === null || selectedIndex === undefined) {
-            complete = false;
-            if (!auto) return;
-          }
           const isCorrect = selectedIndex === expectedAnswers[idx];
           results[`${prefix}-${idx}`] = isCorrect;
           if (isCorrect) correct += 1;
@@ -908,10 +939,6 @@ const initTestPage = async () => {
           total += 1;
           if (type === "gap") {
             const response = (partState?.answers?.[qid]?.response || "").trim();
-            if (!response) {
-              complete = false;
-              if (!auto) return;
-            }
             const expected = (q.answerText || "").trim().toLowerCase();
             const isCorrect = response.toLowerCase() === expected;
             results[qid] = isCorrect;
@@ -920,8 +947,6 @@ const initTestPage = async () => {
           }
           const selectedIndex = partState?.answers?.[qid]?.selectedIndex;
           if (selectedIndex === null || selectedIndex === undefined) {
-            complete = false;
-            if (!auto) return;
             results[qid] = false;
             return;
           }
@@ -947,12 +972,6 @@ const initTestPage = async () => {
         totalQuestions += scored.total;
       }
 
-      if (!complete && !auto) {
-        msg.textContent = "Please answer all questions in Parts 1-5.";
-        msg.style.display = "block";
-        return;
-      }
-
       const score = `${totalCorrect} / ${totalQuestions}`;
       const attempt = await apiRequest("/attempts", {
         method: "POST",
@@ -969,6 +988,7 @@ const initTestPage = async () => {
       });
 
       clearTimerState();
+      clearReadingState();
       const scoreSummary = {
         attemptId: attempt.id,
         testId: test.id,
@@ -1004,6 +1024,7 @@ const initTestPage = async () => {
       });
 
       clearTimerState();
+      clearReadingState();
       submitted = true;
       msg.textContent = auto ? "Time is up. Your response has been recorded." : "Saved! Your response has been recorded.";
       msg.style.display = "block";
@@ -1034,6 +1055,11 @@ const initTestPage = async () => {
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         msg.style.display = "none";
+        const ok = await confirmModal({
+          title: "Submit the exam?",
+          message: "Are you sure you want to submit the exam? This action cannot be undone."
+        });
+        if (!ok) return;
         await submitReadingParts(false);
       });
     } else if (test.type === "mcq") {
@@ -1082,6 +1108,11 @@ const initTestPage = async () => {
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         msg.style.display = "none";
+        const ok = await confirmModal({
+          title: "Submit the exam?",
+          message: "Are you sure you want to submit the exam? This action cannot be undone."
+        });
+        if (!ok) return;
         await submitMcq(false);
       });
     } else {
@@ -1096,6 +1127,11 @@ const initTestPage = async () => {
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         msg.style.display = "none";
+        const ok = await confirmModal({
+          title: "Submit the exam?",
+          message: "Are you sure you want to submit the exam? This action cannot be undone."
+        });
+        if (!ok) return;
         await submitWriting(false);
       });
     }
@@ -1104,6 +1140,9 @@ const initTestPage = async () => {
     const duration = SECTION_TIMERS[test.section];
     if (timerEl && duration) {
       const now = Date.now();
+      if (!sameTestReferrer && timerKey) {
+        removeJson(timerKey);
+      }
       const stored = timerKey ? loadJson(timerKey, null) : null;
       let endTime = stored && stored.end ? Number(stored.end) : 0;
       if (!endTime || endTime <= now) {
@@ -1147,26 +1186,93 @@ const initTestPage = async () => {
 
       const toolbar = document.createElement("div");
       toolbar.className = "highlight-toolbar";
-      toolbar.innerHTML = `
-        <button class="highlight-btn" type="button" data-color="#fff59d" title="Yellow" style="background:#fff59d"></button>
-        <button class="highlight-btn" type="button" data-color="#c8e6c9" title="Green" style="background:#c8e6c9"></button>
-        <button class="highlight-btn" type="button" data-color="#ffcdd2" title="Red" style="background:#ffcdd2"></button>
-        <button class="highlight-btn" type="button" data-color="#bbdefb" title="Blue" style="background:#bbdefb"></button>
-        <button class="highlight-clear" type="button" data-clear="true">Clear</button>
-      `;
+      toolbar.innerHTML = "";
       target.parentElement.insertBefore(toolbar, target);
 
-      toolbar.addEventListener("click", (e) => {
-        const btn = e.target.closest("button");
-        if (!btn) return;
-        target.focus();
-        if (btn.dataset.clear) {
-          document.execCommand("removeFormat", false, null);
+      const floatBtn = document.createElement("button");
+      floatBtn.type = "button";
+      floatBtn.className = "highlight-float";
+      floatBtn.title = "Highlight in yellow";
+      floatBtn.style.display = "none";
+      document.body.appendChild(floatBtn);
+
+      const floatClear = document.createElement("button");
+      floatClear.type = "button";
+      floatClear.className = "highlight-float highlight-float-clear";
+      floatClear.title = "Remove highlight";
+      floatClear.textContent = "×";
+      floatClear.style.display = "none";
+      document.body.appendChild(floatClear);
+
+      const hideFloat = () => {
+        floatBtn.style.display = "none";
+        floatClear.style.display = "none";
+      };
+
+      let lastRange = null;
+      const updateFloat = () => {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+          hideFloat();
           return;
         }
-        const color = btn.dataset.color;
-        document.execCommand("hiliteColor", false, color);
+        const range = selection.getRangeAt(0);
+        if (!target.contains(range.commonAncestorContainer)) {
+          hideFloat();
+          return;
+        }
+        lastRange = range.cloneRange();
+        const rect = range.getBoundingClientRect();
+        const top = rect.top + window.scrollY - 38;
+        const left = rect.left + window.scrollX + rect.width / 2 - 12;
+        floatBtn.style.top = `${Math.max(top, 10)}px`;
+        floatBtn.style.left = `${Math.max(left, 10)}px`;
+        floatClear.style.top = `${Math.max(top, 10)}px`;
+        floatClear.style.left = `${Math.max(left + 32, 10)}px`;
+        floatBtn.style.display = "inline-flex";
+        floatClear.style.display = "inline-flex";
+      };
+
+      const applyYellowHighlight = () => {
+        target.focus();
+        if (lastRange) {
+          const selection = window.getSelection();
+          if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(lastRange);
+          }
+        }
+        document.execCommand("hiliteColor", false, "#87ceeb");
+        hideFloat();
+      };
+
+      floatBtn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        applyYellowHighlight();
       });
+
+      const clearHighlight = () => {
+        target.focus();
+        if (lastRange) {
+          const selection = window.getSelection();
+          if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(lastRange);
+          }
+        }
+        document.execCommand("removeFormat", false, null);
+        hideFloat();
+      };
+
+      floatClear.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        clearHighlight();
+      });
+
+      target.addEventListener("mouseup", updateFloat);
+      target.addEventListener("keyup", updateFloat);
+      target.addEventListener("blur", hideFloat);
+      document.addEventListener("selectionchange", updateFloat);
     };
 
     if (["reading", "listening"].includes(test.section)) {
