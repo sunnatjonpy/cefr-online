@@ -5,6 +5,7 @@ const READING_STATE_PREFIX = "cefr_reading_state_";
 const SCORE_KEY = "cefr_last_score";
 const TIMER_PREFIX = "cefr_timer_";
 const THEME_KEY = "cefr_theme";
+const CHAT_HISTORY_KEY = "cefr_chat_history";
 
 const SECTION_LABELS = {
   reading: "Reading",
@@ -81,6 +82,8 @@ const removeJson = (key) => {
   localStorage.removeItem(key);
 };
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const confirmModal = ({ title, message, confirmText = "Yes", cancelText = "No" }) =>
   new Promise((resolve) => {
     const backdrop = document.createElement("div");
@@ -137,10 +140,24 @@ const apiRequest = async (path, options = {}) => {
   }
 
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+  }
 
   if (!response.ok) {
-    const message = data && data.error ? data.error : "Request failed";
+    let message = "Request failed";
+    if (data && data.error) {
+      message = data.error;
+    } else if (text && text.trim().startsWith("<")) {
+      message = "Server returned an HTML error page. Check server logs.";
+    } else if (text) {
+      message = text;
+    }
     throw new Error(message);
   }
 
@@ -277,6 +294,360 @@ const renderHeader = () => {
       applyTheme(next);
     });
   });
+};
+
+const escapeHtml = (value = "") =>
+  String(value).replace(/[&<>"']/g, (char) => {
+    const map = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    };
+    return map[char] || char;
+  });
+
+const renderAiAssessment = (data) => `
+  <div class="list-item ai-score-card">
+    <strong class="ai-section-title ai-title-main">Writing Assessment</strong>
+    <div class="ai-score-row">
+      <span class="badge">${escapeHtml(data.cefr_level || "CEFR")}</span>
+      <span class="ai-score-value">${data.score ?? "-"}/75</span>
+    </div>
+    <p class="ai-score-scale">A1: 1-18, A2: 19-37, B1: 38-50, B2: 51-64, C1: 65-75</p>
+  </div>
+  <div class="list-item">
+    <strong class="ai-section-title ai-title-theme">Theme Match</strong>
+    <p><strong class="ai-inline-label">Status</strong> ${escapeHtml(data.task_match || "-")}</p>
+    <p>${escapeHtml(data.task_match_reason || "-")}</p>
+  </div>
+  <div class="list-item ai-criteria-grid">
+    <div>
+      <strong class="ai-section-title ai-title-grammar">Grammar</strong>
+      <p>${escapeHtml(data.grammar_feedback || "-")}</p>
+    </div>
+    <div>
+      <strong class="ai-section-title ai-title-vocab">Vocabulary</strong>
+      <p>${escapeHtml(data.vocabulary_feedback || "-")}</p>
+    </div>
+    <div>
+      <strong class="ai-section-title ai-title-coherence">Coherence</strong>
+      <p>${escapeHtml(data.coherence_feedback || "-")}</p>
+    </div>
+  </div>
+  <div class="list-item">
+    <strong class="ai-section-title ai-title-strengths">Strengths</strong>
+    <ul class="ai-list">${(data.strengths || []).map((s) => `<li>${escapeHtml(s)}</li>`).join("") || "<li>-</li>"}</ul>
+  </div>
+  <div class="list-item">
+    <strong class="ai-section-title ai-title-improvements">Improvements</strong>
+    <ul class="ai-list">${(data.improvements || []).map((s) => `<li>${escapeHtml(s)}</li>`).join("") || "<li>-</li>"}</ul>
+  </div>
+  ${
+    data.suggested_rewrite
+      ? `<div class="list-item"><strong class="ai-section-title ai-title-rewrite">Suggested Rewrite</strong><p>${escapeHtml(data.suggested_rewrite)}</p></div>`
+      : ""
+  }
+`;
+
+const CHAT_FAQS = [
+  {
+    patterns: ["login", "sign in", "log in", "account"],
+    answers: {
+      en: "To use most features, log in from the Login page. If you do not have an account yet, open Signup and create one first.",
+      uz: "Ko'p funksiyalardan foydalanish uchun Login sahifasidan tizimga kiring. Agar akkauntingiz bo'lmasa, avval Signup sahifasida ro'yxatdan o'ting.",
+      ru: "Чтобы использовать большинство функций, войдите через страницу Login. Если аккаунта нет, сначала зарегистрируйтесь на странице Signup."
+    }
+  },
+  {
+    patterns: ["signup", "sign up", "register", "create account"],
+    answers: {
+      en: "Open the Signup page, enter your name, email, and password, then submit the form. After that, you can log in and start using the platform.",
+      uz: "Signup sahifasini oching, ism, email va parolni kiriting, keyin formani yuboring. Shundan so'ng tizimga kirib platformadan foydalanishingiz mumkin.",
+      ru: "Откройте страницу Signup, введите имя, email и пароль, затем отправьте форму. После этого можно войти и начать пользоваться платформой."
+    }
+  },
+  {
+    patterns: ["mock", "mock test", "practice test", "take a test"],
+    answers: {
+      en: "Open Take a Mock from the header, choose a section such as Reading, Listening, or Writing, then select a test card to begin.",
+      uz: "Headerdagi Take a Mock bo'limini oching, Reading, Listening yoki Writing kabi sectionni tanlang, keyin test kartasini bosib boshlang.",
+      ru: "Откройте Take a Mock в шапке сайта, выберите раздел Reading, Listening или Writing, затем нажмите на карточку теста, чтобы начать."
+    }
+  },
+  {
+    patterns: ["reading", "reading test", "reading mock"],
+    answers: {
+      en: "Reading tests are split into parts. Open a Reading test, use the fixed part links at the bottom to move between parts, and submit from the last part.",
+      uz: "Reading testlari qismlarga bo'lingan. Reading testni oching, pastdagi fixed part linklar orqali qismlar orasida yuring va oxirgi qismdan submit qiling.",
+      ru: "Тесты Reading разделены на части. Откройте Reading test, переходите между частями по фиксированным ссылкам снизу и отправляйте ответ из последней части."
+    }
+  },
+  {
+    patterns: ["listening", "listening test", "listening mock"],
+    answers: {
+      en: "Listening tests are available from the section page. Open a listening test, read the script or follow the task, answer the questions, and submit when finished.",
+      uz: "Listening testlari section sahifasida mavjud. Listening testni oching, script yoki taskni kuzating, savollarga javob bering va tugagach submit qiling.",
+      ru: "Тесты Listening доступны на странице раздела. Откройте listening test, прочитайте script или следуйте заданию, ответьте на вопросы и отправьте результат."
+    }
+  },
+  {
+    patterns: ["writing", "writing test", "writing mock", "essay"],
+    answers: {
+      en: "Writing tests let you type your response, save an attempt, and use AI Check when the AI service is available. If AI is limited, you can still save your response normally.",
+      uz: "Writing testlarida esse yozishingiz, attemptni saqlashingiz va AI mavjud bo'lsa AI Check ishlatishingiz mumkin. AI cheklangan bo'lsa ham javobingizni odatdagidek saqlash mumkin.",
+      ru: "В Writing tests можно написать эссе, сохранить attempt и использовать AI Check, если AI доступен. Даже если AI ограничен, ответ всё равно можно сохранить."
+    }
+  },
+  {
+    patterns: ["score", "result", "band", "how many correct"],
+    answers: {
+      en: "After you submit a test, the site sends you to the Score page. There you can see the total result and the part-by-part breakdown.",
+      uz: "Testni yuborganingizdan keyin sayt sizni Score sahifasiga o'tkazadi. U yerda umumiy natija va qismlar bo'yicha breakdown ko'rsatiladi.",
+      ru: "После отправки теста сайт переводит вас на страницу Score. Там можно увидеть общий результат и разбивку по частям."
+    }
+  },
+  {
+    patterns: ["timer", "time", "countdown"],
+    answers: {
+      en: "Reading, Listening, and Writing sections use a timer. When you move between reading parts, the same timer continues instead of resetting.",
+      uz: "Reading, Listening va Writing bo'limlarida timer ishlaydi. Reading qismlari orasida o'tganda timer qaytadan boshlanmaydi, davom etadi.",
+      ru: "В разделах Reading, Listening и Writing используется таймер. При переходе между частями Reading таймер не сбрасывается, а продолжает идти."
+    }
+  },
+  {
+    patterns: ["highlight", "mark text", "blue highlight"],
+    answers: {
+      en: "In reading passages, you can select text and use the floating highlight tool. The site also lets you remove highlights with the small close button.",
+      uz: "Reading passage ichida matnni belgilab, floating highlight tooldan foydalanishingiz mumkin. Kichik close tugmasi orqali highlightni olib tashlash ham mumkin.",
+      ru: "В reading passage можно выделять текст и использовать плавающий инструмент подсветки. Подсветку также можно убрать маленькой кнопкой закрытия."
+    }
+  },
+  {
+    patterns: ["dark mode", "theme", "light mode"],
+    answers: {
+      en: "Use the theme toggle in the header to switch between light and dark mode. On mobile it sits near the menu button.",
+      uz: "Headerdagi theme toggle orqali light va dark mode orasida o'ting. Mobilda u menu tugmasi yonida turadi.",
+      ru: "Используйте переключатель темы в шапке, чтобы менять light и dark mode. На мобильной версии он расположен рядом с кнопкой меню."
+    }
+  },
+  {
+    patterns: ["dashboard", "recent attempts", "progress"],
+    answers: {
+      en: "The Dashboard shows your recent attempts, quick access to sections, and your learning progress summary.",
+      uz: "Dashboard sahifasida recent attempts, bo'limlarga tezkor kirish va o'qish progressi ko'rsatiladi.",
+      ru: "На Dashboard показываются recent attempts, быстрый доступ к разделам и краткая сводка вашего прогресса."
+    }
+  },
+  {
+    patterns: ["admin", "add test", "manage tests", "manage vocab", "manage grammar"],
+    answers: {
+      en: "Admins can open the Admin area to create or edit tests, vocabulary sets, grammar lessons, and other learning content.",
+      uz: "Adminlar Admin bo'limida testlar, vocabulary setlar, grammar lessonlar va boshqa materiallarni yaratishi yoki tahrirlashi mumkin.",
+      ru: "Администраторы могут открыть раздел Admin и создавать или редактировать тесты, наборы слов, grammar lessons и другой учебный контент."
+    }
+  },
+  {
+    patterns: ["service", "what is this site", "about this site", "platform"],
+    answers: {
+      en: "This site is a CEFR-focused mock test platform. It helps learners practice Reading, Listening, Writing, and related English skills in an exam-style format.",
+      uz: "Bu sayt CEFR ga yo'naltirilgan mock test platformasi. U foydalanuvchilarga Reading, Listening, Writing va boshqa ingliz tili ko'nikmalarini imtihon uslubida mashq qilishga yordam beradi.",
+      ru: "Этот сайт — платформа mock tests, ориентированная на CEFR. Она помогает практиковать Reading, Listening, Writing и другие навыки английского в формате экзамена."
+    }
+  },
+  {
+    patterns: ["contact", "support", "help"],
+    answers: {
+      en: "For now, the quickest support path is to use the navigation clearly and report issues to the site owner or admin. The chatbot can also answer common usage questions.",
+      uz: "Hozircha eng tez yordam yo'li bu navigatsiyadan foydalanish va muammolarni sayt egasi yoki adminiga xabar qilish. Chatbot ham ko'p uchraydigan savollarga javob bera oladi.",
+      ru: "Сейчас самый быстрый способ получить помощь — использовать навигацию и сообщать о проблемах владельцу сайта или администратору. Chatbot тоже может отвечать на частые вопросы."
+    }
+  }
+];
+
+const CHAT_SUGGESTIONS = [
+  "How do I start a mock test?",
+  "How does the Reading timer work?",
+  "Where can I see my score?",
+  "How do I use AI Check in Writing?",
+  "Where is dark mode?"
+];
+
+const detectChatLanguage = (message) => {
+  const text = (message || "").trim().toLowerCase();
+  if (!text) return "en";
+  if (/[а-яё]/i.test(text)) return "ru";
+  const uzbekHints = [
+    "salom", "qanday", "yoz", "yozing", "test", "mock", "sayt", "til", "qayerda",
+    "nima", "kerak", "yordam", "hisob", "natija", "bo'lim", "bolim", "kirish"
+  ];
+  if (/[ʻ’]/.test(text) || uzbekHints.some((word) => text.includes(word))) return "uz";
+  return "en";
+};
+
+const getFaqReply = (message) => {
+  const normalized = message.toLowerCase().replace(/\s+/g, " ").trim();
+  const lang = detectChatLanguage(message);
+  for (const item of CHAT_FAQS) {
+    if (item.patterns.some((pattern) => normalized.includes(pattern))) {
+      return item.answers?.[lang] || item.answers?.en || "";
+    }
+  }
+  return "";
+};
+
+const renderChatbot = () => {
+  if (qs("#ai-chatbot")) return;
+
+  const shell = document.createElement("aside");
+  shell.id = "ai-chatbot";
+  shell.className = "chatbot-shell";
+  shell.innerHTML = `
+    <div class="chatbot-panel" hidden>
+      <div class="chatbot-header">
+        <div>
+          <strong>CEFR AI</strong>
+          <p>Grammar, writing, mock tests, and site help.</p>
+        </div>
+        <button class="chatbot-close" type="button" aria-label="Close chat">×</button>
+      </div>
+      <div class="chatbot-messages" id="chatbot-messages"></div>
+      <div class="chatbot-suggestions">
+        ${CHAT_SUGGESTIONS.map(
+          (question) =>
+            `<button class="chatbot-chip" type="button" data-chat-question="${escapeHtml(question)}">${escapeHtml(question)}</button>`
+        ).join("")}
+      </div>
+      <form class="chatbot-form" id="chatbot-form">
+        <textarea id="chatbot-input" rows="1" placeholder="Ask anything..."></textarea>
+        <button class="btn btn-primary" type="submit">Send</button>
+      </form>
+    </div>
+    <button class="chatbot-toggle" type="button" aria-label="Open AI chat">
+      <span>AI</span>
+    </button>
+  `;
+  document.body.appendChild(shell);
+
+  const panel = qs(".chatbot-panel", shell);
+  const toggle = qs(".chatbot-toggle", shell);
+  const close = qs(".chatbot-close", shell);
+  const messagesEl = qs("#chatbot-messages", shell);
+  const form = qs("#chatbot-form", shell);
+  const input = qs("#chatbot-input", shell);
+  const submitBtn = qs("button[type='submit']", form);
+  const chips = qsa("[data-chat-question]", shell);
+  let history = loadJson(CHAT_HISTORY_KEY, []);
+
+  const ensureIntro = () => {
+    if (history.length) return;
+    history = [
+      {
+        role: "assistant",
+        content: "Hi. I’m CEFR AI. Ask me about grammar, vocabulary, writing, mock tests, or how to use the site."
+      }
+    ];
+    saveJson(CHAT_HISTORY_KEY, history);
+  };
+
+  const paintMessages = () => {
+    ensureIntro();
+    messagesEl.innerHTML = history
+      .map(
+        (item) => `
+          <div class="chatbot-message chatbot-message-${item.role}">
+            <div class="chatbot-bubble">${escapeHtml(item.content)}</div>
+          </div>
+        `
+      )
+      .join("");
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  };
+
+  const setOpen = (open) => {
+    panel.hidden = !open;
+    shell.classList.toggle("is-open", open);
+    if (open) {
+      paintMessages();
+      input.focus();
+    }
+  };
+
+  toggle.addEventListener("click", () => setOpen(panel.hidden));
+  close.addEventListener("click", () => setOpen(false));
+
+  input.addEventListener("input", () => {
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+  });
+
+  const submitChatMessage = async (message) => {
+    if (!message) return;
+
+    ensureIntro();
+    history.push({ role: "user", content: message });
+    history = history.slice(-12);
+    saveJson(CHAT_HISTORY_KEY, history);
+    paintMessages();
+    input.value = "";
+    input.style.height = "auto";
+
+    history.push({ role: "assistant", content: "Thinking..." });
+    paintMessages();
+    submitBtn.disabled = true;
+
+    try {
+      await wait(2000);
+      const faqReply = getFaqReply(message);
+      let reply = faqReply;
+
+      if (!reply) {
+        const data = await apiRequest("/ai/chat", {
+          method: "POST",
+          auth: false,
+          body: {
+            message,
+            history: history.filter((item) => item.content !== "Thinking...")
+          }
+        });
+        reply = data.reply || "I could not generate a reply.";
+      }
+
+      history = history.filter((item) => item.content !== "Thinking...");
+      history.push({
+        role: "assistant",
+        content: reply
+      });
+    } catch (err) {
+      history = history.filter((item) => item.content !== "Thinking...");
+      history.push({
+        role: "assistant",
+        content: err.message || "AI chat is unavailable right now."
+      });
+    } finally {
+      history = history.slice(-12);
+      saveJson(CHAT_HISTORY_KEY, history);
+      paintMessages();
+      submitBtn.disabled = false;
+    }
+  };
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const message = input.value.trim();
+    await submitChatMessage(message);
+  });
+
+  chips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      input.value = chip.dataset.chatQuestion || "";
+      input.dispatchEvent(new Event("input"));
+      input.focus();
+    });
+  });
+
+  paintMessages();
 };
 const formatDate = (iso) => {
   try {
@@ -1007,10 +1378,12 @@ const initTestPage = async () => {
       finalizeSubmission(score, auto);
     };
 
+    let latestWritingFeedback = null;
+
     const submitWriting = async (auto = false) => {
       if (submitted) return;
       const response = qs("#response").value.trim();
-      const score = Number(qs("#self-score").value || 0);
+      const score = latestWritingFeedback?.score ? `${latestWritingFeedback.score}/75` : "";
 
       await apiRequest("/attempts", {
         method: "POST",
@@ -1019,7 +1392,10 @@ const initTestPage = async () => {
           section: test.section,
           type: test.type,
           score,
-          response
+          response,
+          answers: {
+            aiFeedback: latestWritingFeedback || null
+          }
         }
       });
 
@@ -1118,11 +1494,60 @@ const initTestPage = async () => {
     } else {
       form.innerHTML = `
       <label>Your response</label>
-      <textarea id="response" placeholder="Write or outline your answer..."></textarea>
-      <label>Self-score (0-30)</label>
-        <input type="number" id="self-score" min="0" max="30" value="20" />
-      <button class="btn btn-primary" type="submit">Save Attempt</button>
+      <textarea id="response" class="writing-response" placeholder="Write your essay here..."></textarea>
+      <div class="row">
+        <button class="btn btn-outline" type="button" id="ai-check-btn">AI Check</button>
+        <button class="btn btn-primary" type="submit">Save Attempt</button>
+      </div>
+      <div id="ai-feedback" class="list" style="display:none"></div>
     `;
+
+      const aiBtn = qs("#ai-check-btn");
+      const aiBox = qs("#ai-feedback");
+
+      if (aiBtn && aiBox) {
+        aiBtn.addEventListener("click", async () => {
+          const responseText = qs("#response").value.trim();
+          if (!responseText) {
+            aiBox.style.display = "block";
+            aiBox.innerHTML = '<div class="notice">Please write a response first.</div>';
+            return;
+          }
+
+          aiBtn.disabled = true;
+          aiBox.style.display = "block";
+          aiBox.innerHTML = '<div class="notice">Checking with AI...</div>';
+
+          try {
+            const data = await apiRequest("/ai/writing-check", {
+              method: "POST",
+              body: {
+                response: responseText,
+                prompt: test.prompt || "",
+                rubric: test.rubric || ""
+              }
+            });
+
+            if (data.raw) {
+              latestWritingFeedback = { raw: data.raw };
+              aiBox.innerHTML = `
+                <div class="list-item">
+                  <strong>AI Feedback</strong>
+                  <p>${escapeHtml(data.raw)}</p>
+                </div>
+              `;
+            } else {
+              latestWritingFeedback = data;
+              aiBox.innerHTML = renderAiAssessment(data);
+            }
+          } catch (err) {
+            latestWritingFeedback = null;
+            aiBox.innerHTML = `<div class="notice">${err.message || "AI check failed."}</div>`;
+          } finally {
+            aiBtn.disabled = false;
+          }
+        });
+      }
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -2679,6 +3104,7 @@ const initMockPage = () => {
 const initPage = async () => {
   applyTheme(getPreferredTheme());
   renderHeader();
+  renderChatbot();
   const page = document.body.dataset.page;
 
   switch (page) {

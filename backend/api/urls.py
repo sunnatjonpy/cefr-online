@@ -14,4 +14,6 @@ urlpatterns = [
     path("grammar/<int:lesson_id>", views.grammar_lessons),
     path("attempts", views.attempts),
     path("users", views.users),
+    path("ai/writing-check", views.ai_writing_check),
+    path("ai/chat", views.ai_chat),
 ]
